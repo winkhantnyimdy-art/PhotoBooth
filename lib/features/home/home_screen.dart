@@ -6,7 +6,8 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
 import 'layout_model.dart';
 import 'layout_preview.dart';
-import 'pre_camera_screen.dart';
+
+import 'package:photo_booth/features/camera/camera_screen.dart';
 
 /// The Home screen: layout selection and start flow.
 class HomeScreen extends StatefulWidget {
@@ -73,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => PreCameraScreen(layout: _selected),
+                          builder: (_) => CameraScreen(layout: _selected),
                         ),
                       );
                     },

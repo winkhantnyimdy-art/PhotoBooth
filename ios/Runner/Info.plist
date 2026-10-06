@@ -8,6 +8,8 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>PhotoBooth</string>
+	<key>NSCameraUsageDescription</key>
+	<string>PhotoBooth needs access to your camera so you can take photos with the layout you chose.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
