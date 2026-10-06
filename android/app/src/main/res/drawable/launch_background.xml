@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch splash background. Warm cream, matching AppColors.background
+     (0xFFFFF8F1) so the cold-launch frame does not flash white. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
+</layer-list>

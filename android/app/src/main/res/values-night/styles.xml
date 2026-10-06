@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- PhotoBooth ships a single light cream theme, so the night variant is
+         intentionally identical: the launch frame matches on all devices
+         regardless of system dark mode. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>
