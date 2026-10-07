@@ -31,6 +31,9 @@ dependencies:
   camera: ^0.12.1
   flutter:
     sdk: flutter
+  gal: ^2.3.3
+  path_provider: ^2.1.6
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:

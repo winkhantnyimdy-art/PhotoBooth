@@ -10,6 +10,10 @@
 	<string>PhotoBooth</string>
 	<key>NSCameraUsageDescription</key>
 	<string>PhotoBooth needs access to your camera so you can take photos with the layout you chose.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>PhotoBooth needs permission to save your finished photo strip to your gallery.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>PhotoBooth needs permission to access your gallery to save your finished photo strip.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
