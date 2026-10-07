@@ -2,6 +2,11 @@
 *.class
 # Windows Explorer metadata that should never leave this machine.
 desktop.ini
+# Accidental local agent/session artifacts: writes that meant to target an
+# absolute path outside the repo get flattened into the project root with the
+# separators collapsed (e.g. "C<sep>Users<sep>...\.claude\plans\*.md").
+*claudeplans*
+Ready.
 *.log
 *.pyc
 *.swp

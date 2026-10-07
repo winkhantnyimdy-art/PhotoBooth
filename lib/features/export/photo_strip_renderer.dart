@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 
@@ -31,11 +32,9 @@ class PhotoStripRenderer {
     final ui.Canvas canvas = ui.Canvas(recorder);
 
     // 1. Background
-    final ui.Paint bgPaint = ui.Paint()..color = decorationState.background.color;
-    canvas.drawRect(
-      ui.Rect.fromLTWH(0, 0, exportWidth, height),
-      bgPaint,
-    );
+    final ui.Paint bgPaint = ui.Paint()
+      ..color = decorationState.background.color;
+    canvas.drawRect(ui.Rect.fromLTWH(0, 0, exportWidth, height), bgPaint);
 
     // 2. Border (3px)
     final ui.Paint borderPaint = ui.Paint()
@@ -58,8 +57,10 @@ class PhotoStripRenderer {
     final double availableGridWidth = exportWidth - (cellPadding * 2);
     final double availableGridHeight = gridHeight - (cellPadding * 2);
 
-    final double cellWidth = (availableGridWidth - (cols - 1) * cellPadding) / cols;
-    final double cellHeight = (availableGridHeight - (rows - 1) * cellPadding) / rows;
+    final double cellWidth =
+        (availableGridWidth - (cols - 1) * cellPadding) / cols;
+    final double cellHeight =
+        (availableGridHeight - (rows - 1) * cellPadding) / rows;
 
     for (int i = 0; i < photos.length; i++) {
       if (i >= cols * rows) break;
@@ -70,29 +71,48 @@ class PhotoStripRenderer {
       final double left = cellPadding + c * (cellWidth + cellPadding);
       final double top = cellPadding + r * (cellHeight + cellPadding);
 
-      final ui.Image image = await _decodeAndCropImage(photos[i].path, cellWidth, cellHeight);
+      final ui.Image image = await _decodeAndCropImage(
+        photos[i].path,
+        cellWidth,
+        cellHeight,
+      );
 
       canvas.drawImage(image, ui.Offset(left, top), ui.Paint());
     }
 
     // 4. Decorative Styles (Overlay)
     if (decorationState.style != DecorativeStyle.clean) {
-      _renderStyleOverlay(canvas, decorationState.style, decorationState.background, gridHeight);
+      _renderStyleOverlay(
+        canvas,
+        decorationState.style,
+        decorationState.background,
+        gridHeight,
+      );
     }
 
     // 5. Stickers
     for (final sticker in decorationState.stickers) {
       final double sx = sticker.x * exportWidth;
       final double sy = sticker.y * gridHeight;
-      _renderStickerIcon(canvas, sticker.type, ui.Offset(sx, sy), decorationState.background);
+      _renderStickerIcon(
+        canvas,
+        sticker.type,
+        ui.Offset(sx, sy),
+        decorationState.background,
+      );
     }
 
     // 6. Branding & Date
     _renderBranding(canvas, height, decorationState);
 
     final ui.Picture picture = recorder.endRecording();
-    final ui.Image img = await picture.toImage(exportWidth.toInt(), height.toInt());
-    final ByteData? byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    final ui.Image img = await picture.toImage(
+      exportWidth.toInt(),
+      height.toInt(),
+    );
+    final ByteData? byteData = await img.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
     if (byteData == null) throw Exception('Failed to encode image to PNG');
 
     return byteData.buffer.asUint8List();
@@ -108,7 +128,11 @@ class PhotoStripRenderer {
     return contentHeight + footerHeight;
   }
 
-  Future<ui.Image> _decodeAndCropImage(String path, double targetW, double targetH) async {
+  Future<ui.Image> _decodeAndCropImage(
+    String path,
+    double targetW,
+    double targetH,
+  ) async {
     final Uint8List bytes = await File(path).readAsBytes();
     final ui.Codec codec = await ui.instantiateImageCodec(
       bytes,
@@ -119,7 +143,12 @@ class PhotoStripRenderer {
     return frame.image;
   }
 
-  void _renderStyleOverlay(ui.Canvas canvas, DecorativeStyle style, BackgroundChoice background, double height) {
+  void _renderStyleOverlay(
+    ui.Canvas canvas,
+    DecorativeStyle style,
+    BackgroundChoice background,
+    double height,
+  ) {
     final ui.Paint paint = ui.Paint()
       ..style = ui.PaintingStyle.fill
       ..color = background == BackgroundChoice.charcoal
@@ -142,10 +171,30 @@ class PhotoStripRenderer {
       for (double x = heartSize; x < exportWidth - heartSize; x += spacing) {
         final Path path = Path();
         path.moveTo(x, y + heartSize * 0.3);
-        path.quadraticBezierTo(x - heartSize * 0.4, y - heartSize * 0.3, x, y + heartSize * 0.1);
-        path.quadraticBezierTo(x + heartSize * 0.4, y - heartSize * 0.3, x, y + heartSize * 0.3);
-        path.quadraticBezierTo(x - heartSize * 0.4, y + heartSize * 0.8, x, y + heartSize * 1.2);
-        path.quadraticBezierTo(x + heartSize * 0.4, y + heartSize * 0.8, x, y + heartSize * 0.3);
+        path.quadraticBezierTo(
+          x - heartSize * 0.4,
+          y - heartSize * 0.3,
+          x,
+          y + heartSize * 0.1,
+        );
+        path.quadraticBezierTo(
+          x + heartSize * 0.4,
+          y - heartSize * 0.3,
+          x,
+          y + heartSize * 0.3,
+        );
+        path.quadraticBezierTo(
+          x - heartSize * 0.4,
+          y + heartSize * 0.8,
+          x,
+          y + heartSize * 1.2,
+        );
+        path.quadraticBezierTo(
+          x + heartSize * 0.4,
+          y + heartSize * 0.8,
+          x,
+          y + heartSize * 0.3,
+        );
         path.close();
         canvas.drawPath(path, paint);
       }
@@ -157,20 +206,20 @@ class PhotoStripRenderer {
     final double spacing = exportWidth * 0.25;
     for (double y = starSize; y < height - starSize; y += spacing) {
       for (double x = starSize; x < exportWidth - starSize; x += spacing) {
-      final Path path = Path();
-      path.moveTo(x, y - starSize);
-      path.lineTo(x + starSize * 0.2, y - starSize * 0.3);
-      path.lineTo(x + starSize, y - starSize);
-      path.lineTo(x + starSize * 0.3, y + starSize * 0.2);
-      path.lineTo(x + starSize * 0.5, y + starSize);
-      path.lineTo(x, y + starSize * 0.3);
-      path.lineTo(x - starSize * 0.5, y + starSize);
-      path.lineTo(x - starSize * 0.3, y + starSize * 0.2);
-      path.lineTo(x - starSize, y - starSize);
-      path.lineTo(x - starSize * 0.2, y - starSize * 0.3);
-      path.close();
-      canvas.drawPath(path, paint);
-    }
+        final Path path = Path();
+        path.moveTo(x, y - starSize);
+        path.lineTo(x + starSize * 0.2, y - starSize * 0.3);
+        path.lineTo(x + starSize, y - starSize);
+        path.lineTo(x + starSize * 0.3, y + starSize * 0.2);
+        path.lineTo(x + starSize * 0.5, y + starSize);
+        path.lineTo(x, y + starSize * 0.3);
+        path.lineTo(x - starSize * 0.5, y + starSize);
+        path.lineTo(x - starSize * 0.3, y + starSize * 0.2);
+        path.lineTo(x - starSize, y - starSize);
+        path.lineTo(x - starSize * 0.2, y - starSize * 0.3);
+        path.close();
+        canvas.drawPath(path, paint);
+      }
     }
   }
 
@@ -178,15 +227,38 @@ class PhotoStripRenderer {
     final double sparkleSize = exportWidth * 0.04;
     final double spacing = exportWidth * 0.3;
     for (double y = sparkleSize; y < height - sparkleSize; y += spacing) {
-      for (double x = sparkleSize; x < exportWidth - sparkleSize; x += spacing) {
-        canvas.drawRect(ui.Rect.fromCenter(center: Offset(x, y), width: sparkleSize * 0.2, height: sparkleSize * 1.2), paint);
-        canvas.drawRect(ui.Rect.fromCenter(center: Offset(x, y), width: sparkleSize * 1.2, height: sparkleSize * 0.2), paint);
+      for (
+        double x = sparkleSize;
+        x < exportWidth - sparkleSize;
+        x += spacing
+      ) {
+        canvas.drawRect(
+          ui.Rect.fromCenter(
+            center: Offset(x, y),
+            width: sparkleSize * 0.2,
+            height: sparkleSize * 1.2,
+          ),
+          paint,
+        );
+        canvas.drawRect(
+          ui.Rect.fromCenter(
+            center: Offset(x, y),
+            width: sparkleSize * 1.2,
+            height: sparkleSize * 0.2,
+          ),
+          paint,
+        );
         canvas.drawCircle(Offset(x, y), sparkleSize * 0.5, paint);
       }
     }
   }
 
-  void _renderStickerIcon(ui.Canvas canvas, StickerType type, ui.Offset offset, BackgroundChoice background) {
+  void _renderStickerIcon(
+    ui.Canvas canvas,
+    StickerType type,
+    ui.Offset offset,
+    BackgroundChoice background,
+  ) {
     final ui.Paint paint = ui.Paint()
       ..color = background == BackgroundChoice.charcoal
           ? Colors.white
@@ -196,8 +268,18 @@ class PhotoStripRenderer {
     if (type == StickerType.heart) {
       final Path path = Path();
       path.moveTo(offset.dx, offset.dy + 10);
-      path.quadraticBezierTo(offset.dx - 10, offset.dy - 10, offset.dx, offset.dy + 2);
-      path.quadraticBezierTo(offset.dx + 10, offset.dy - 10, offset.dx, offset.dy + 10);
+      path.quadraticBezierTo(
+        offset.dx - 10,
+        offset.dy - 10,
+        offset.dx,
+        offset.dy + 2,
+      );
+      path.quadraticBezierTo(
+        offset.dx + 10,
+        offset.dy - 10,
+        offset.dx,
+        offset.dy + 10,
+      );
       canvas.drawPath(path, paint);
     } else if (type == StickerType.star) {
       canvas.drawCircle(Offset(offset.dx, offset.dy), 10, paint);
@@ -208,14 +290,23 @@ class PhotoStripRenderer {
     }
   }
 
-  void _renderBranding(ui.Canvas canvas, double totalHeight, DecorationState decorationState) {
+  void _renderBranding(
+    ui.Canvas canvas,
+    double totalHeight,
+    DecorationState decorationState,
+  ) {
     final ui.Paint footerPaint = ui.Paint()
       ..color = decorationState.background == BackgroundChoice.charcoal
           ? Colors.black54
           : Colors.black38;
 
     canvas.drawRect(
-      ui.Rect.fromLTWH(0, totalHeight - footerHeight, exportWidth, footerHeight),
+      ui.Rect.fromLTWH(
+        0,
+        totalHeight - footerHeight,
+        exportWidth,
+        footerHeight,
+      ),
       footerPaint,
     );
 
@@ -232,21 +323,35 @@ class PhotoStripRenderer {
       textDirection: TextDirection.ltr,
     );
     brandingPainter.layout();
-    brandingPainter.paint(canvas, Offset((exportWidth - brandingPainter.width) / 2, totalHeight - footerHeight + (footerHeight - brandingPainter.height) / 2));
+    brandingPainter.paint(
+      canvas,
+      Offset(
+        (exportWidth - brandingPainter.width) / 2,
+        totalHeight -
+            footerHeight +
+            (footerHeight - brandingPainter.height) / 2,
+      ),
+    );
 
     if (decorationState.showDate) {
       final TextPainter datePainter = TextPainter(
         text: TextSpan(
-          text: '${decorationState.displayDate.year}-${decorationState.displayDate.month.toString().padLeft(2, '0')}-${decorationState.displayDate.day.toString().padLeft(2, '0')}',
-          style: TextStyle(
-            fontSize: 18,
-            color: Colors.white70,
-          ),
+          text:
+              '${decorationState.displayDate.year}-${decorationState.displayDate.month.toString().padLeft(2, '0')}-${decorationState.displayDate.day.toString().padLeft(2, '0')}',
+          style: TextStyle(fontSize: 18, color: Colors.white70),
         ),
         textDirection: TextDirection.ltr,
       );
       datePainter.layout();
-      datePainter.paint(canvas, Offset((exportWidth - datePainter.width) / 2, totalHeight - footerHeight + (footerHeight + brandingPainter.height) / 2));
+      datePainter.paint(
+        canvas,
+        Offset(
+          (exportWidth - datePainter.width) / 2,
+          totalHeight -
+              footerHeight +
+              (footerHeight + brandingPainter.height) / 2,
+        ),
+      );
     }
   }
 }
