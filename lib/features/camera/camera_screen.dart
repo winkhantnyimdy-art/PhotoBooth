@@ -309,10 +309,11 @@ class _CameraScreenState extends State<CameraScreen>
 
   Future<void> _confirmLeaveSession(BuildContext context) async {
     final token = _cancelToken;
+    final navigator = Navigator.of(context);
     final confirm = await _showLeaveDialog(context);
     if (confirm == true && mounted) {
       token.cancelled = true;
-      Navigator.of(context).pop();
+      navigator.pop();
     }
   }
 
