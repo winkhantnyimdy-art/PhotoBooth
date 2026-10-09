@@ -2,6 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../home/layout_model.dart';
 
+/// Formats the stamped date used by the composition footer.
+///
+/// Shared by the Decorate live preview and the exported PNG so the date the
+/// user sees while styling is character-for-character the date they get.
+String formatExportDate(DateTime date) =>
+    '${date.year}.${_twoDigits(date.month)}.${_twoDigits(date.day)}';
+
+String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
 /// The decoration state for a PhotoBooth composition.
 ///
 /// This model represents the user's customization choices for the
@@ -62,13 +71,16 @@ class DecorationState {
 }
 
 /// Background/frame color choices for the photo strip.
+///
+/// Aligned with the app palette so an exported strip feels like the product
+/// that produced it.
 enum BackgroundChoice {
-  cream('Cream', Color(0xFFFFFBF5)),
-  softPink('Soft Pink', Color(0xFFFCEBF0)),
+  cream('Cream', Color(0xFFFFF9F5)),
+  softPink('Soft Pink', Color(0xFFFFE4EB)),
   white('White', Color(0xFFFFFFFF)),
-  charcoal('Charcoal', Color(0xFF2A2522)),
-  lavender('Lavender', Color(0xFFF5F0FF)),
-  skyBlue('Sky Blue', Color(0xFFF0F8FF));
+  charcoal('Charcoal', Color(0xFF302B30)),
+  lavender('Lavender', Color(0xFFF2ECFF)),
+  skyBlue('Sky Blue', Color(0xFFEAF4FB));
 
   const BackgroundChoice(this.label, this.color);
 

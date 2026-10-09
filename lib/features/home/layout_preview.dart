@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
+import 'layout_geometry.dart';
 import 'layout_model.dart';
 
-/// Flutter-drawn preview of a [PhotoLayout] inside a selectable card.
+/// A miniature rendering of a [PhotoLayout] on a selectable card.
+///
+/// The thumbnail is drawn from [PhotoStripGeometry], the same source the
+/// exported PNG uses, so the arrangement a user picks here is exactly the
+/// arrangement they get. Nothing is stretched: the strip keeps its true aspect
+/// ratio inside the available box.
 class LayoutPreview extends StatelessWidget {
   const LayoutPreview({
     super.key,
@@ -20,65 +28,95 @@ class LayoutPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Semantics(
-        button: true,
-        selected: selected,
-        label:
-            '${layout.label} layout${layout.badge != null ? ', ${layout.badge}' : ''}',
-        child: Container(
-          padding: const EdgeInsets.all(S.md),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: R.all(R.md),
-            border: Border.all(
-              color: selected ? AppColors.accent : AppColors.line,
-              width: selected ? 2.5 : 1,
+    final String badge = layout.badge ?? '';
+    final String semanticsLabel = layout.badge == null
+        ? '${layout.label} layout, ${layout.description}'
+        : '${layout.label} layout, ${layout.description}, ${layout.badge}';
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: semanticsLabel,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: AppMotion.of(context, AppMotion.fast),
+            curve: AppMotion.curve,
+            padding: const EdgeInsets.symmetric(
+              horizontal: S.sm,
+              vertical: S.md,
             ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _GridPreview(layout: layout),
-              const SizedBox(height: S.sm),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    layout.label,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: selected
-                          ? AppColors.accentDeep
-                          : AppColors.textPrimary,
-                    ),
-                  ),
-                  if (layout.badge != null) ...[
-                    const SizedBox(width: S.xs),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: S.xs,
-                        vertical: 1,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: R.all(R.lg),
+              border: Border.all(
+                color: selected ? AppColors.accent : AppColors.line,
+                width: selected ? 2 : 1,
+              ),
+              boxShadow: selected
+                  ? <BoxShadow>[
+                      BoxShadow(
+                        color: AppColors.accent.withValues(alpha: 0.28),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
                       ),
-                      decoration: BoxDecoration(
-                        color: AppColors.accent,
-                        borderRadius: R.all(R.xs),
+                    ]
+                  : <BoxShadow>[
+                      BoxShadow(
+                        color: AppColors.textPrimary.withValues(alpha: 0.07),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
                       ),
+                    ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                _StripThumbnail(layout: layout, selected: selected),
+                const SizedBox(height: S.sm + S.xs),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Flexible(
                       child: Text(
-                        layout.badge!,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.onAccent,
+                        layout.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.label.copyWith(
+                          color: selected
+                              ? AppColors.accentInk
+                              : AppColors.textPrimary,
                         ),
                       ),
                     ),
+                    if (layout.badge != null) ...<Widget>[
+                      const SizedBox(width: S.xs + S.xs),
+                      _Badge(
+                        label: badge,
+                        color: selected
+                            ? AppColors.accent
+                            : AppColors.accentSoft,
+                        foreground: selected
+                            ? AppColors.onAccent
+                            : AppColors.accentInk,
+                      ),
+                    ],
                   ],
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  layout.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption.copyWith(
+                    color: AppColors.textMuted,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -86,80 +124,105 @@ class LayoutPreview extends StatelessWidget {
   }
 }
 
-/// Draws a miniature grid representing the layout using Flutter shapes.
-class _GridPreview extends StatelessWidget {
-  const _GridPreview({required this.layout});
+/// Small rounded pill used for the "Popular" marker.
+class _Badge extends StatelessWidget {
+  const _Badge({
+    required this.label,
+    required this.color,
+    required this.foreground,
+  });
 
-  final PhotoLayout layout;
+  final String label;
+  final Color color;
+  final Color foreground;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 72,
-      height: 72,
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: R.all(R.sm),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final double cellW = constraints.maxWidth / layout.cols;
-          final double cellH = constraints.maxHeight / layout.rows;
-          return CustomPaint(
-            painter: _GridPainter(
-              cols: layout.cols,
-              rows: layout.rows,
-              cellW: cellW,
-              cellH: cellH,
-            ),
-          );
-        },
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: color, borderRadius: R.all(R.xs)),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.3,
+          color: foreground,
+        ),
       ),
     );
   }
 }
 
-/// Paints a grid of rounded rectangles to represent the layout.
-class _GridPainter extends CustomPainter {
-  _GridPainter({
-    required this.cols,
-    required this.rows,
-    required this.cellW,
-    required this.cellH,
-  });
+/// Draws the strip at its true aspect ratio using the shared geometry.
+class _StripThumbnail extends StatelessWidget {
+  const _StripThumbnail({required this.layout, required this.selected});
 
-  final int cols;
-  final int rows;
-  final double cellW;
-  final double cellH;
+  final PhotoLayout layout;
+  final bool selected;
+
+  /// Fixed thumbnail height so every layout card reads at a consistent size
+  /// while the strip itself keeps its real proportions inside that box.
+  static const double _thumbHeight = 104;
+
+  @override
+  Widget build(BuildContext context) {
+    final double aspect = PhotoStripGeometry.aspectRatio(layout);
+    return SizedBox(
+      height: _thumbHeight,
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: aspect,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.surfaceTint,
+              borderRadius: R.all(R.sm),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(3),
+              child: CustomPaint(
+                painter: _StripPainter(
+                  layout: layout,
+                  fill: selected ? AppColors.accent : AppColors.accentDeep,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Paints the photo cells of a layout at the geometry's true proportions.
+class _StripPainter extends CustomPainter {
+  const _StripPainter({required this.layout, required this.fill});
+
+  final PhotoLayout layout;
+  final Color fill;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.accent.withValues(alpha: 0.35)
-      ..style = PaintingStyle.fill;
+    final double scale = size.width / PhotoStripGeometry.exportWidth;
+    final Paint paint = Paint()..color = fill;
 
-    final stroke = Paint()
-      ..color = AppColors.accent
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    for (int r = 0; r < rows; r++) {
-      for (int c = 0; c < cols; c++) {
-        final rect = RRect.fromRectAndRadius(
-          Rect.fromLTWH(c * cellW + 1, r * cellH + 1, cellW - 2, cellH - 2),
-          const Radius.circular(4),
-        );
-        canvas.drawRRect(rect, paint);
-        canvas.drawRRect(rect, stroke);
-      }
+    for (int i = 0; i < layout.photoCount; i++) {
+      final Rect cell = PhotoStripGeometry.cellRect(layout, i);
+      final Rect scaled = Rect.fromLTWH(
+        cell.left * scale,
+        cell.top * scale,
+        cell.width * scale,
+        cell.height * scale,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(scaled, const Radius.circular(1.5)),
+        paint,
+      );
     }
   }
 
   @override
-  bool shouldRepaint(covariant _GridPainter old) =>
-      old.cols != cols ||
-      old.rows != rows ||
-      old.cellW != cellW ||
-      old.cellH != cellH;
+  bool shouldRepaint(covariant _StripPainter old) =>
+      old.layout != layout || old.fill != fill;
 }

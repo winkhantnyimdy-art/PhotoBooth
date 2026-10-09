@@ -5,31 +5,77 @@ import 'package:flutter/material.dart';
 /// All visual color decisions live here. Widgets must reference these tokens
 /// rather than declaring their own hex/`Color()` values, so the cream/pastel
 /// direction stays consistent as features are added.
+///
+/// The palette targets a warm, premium photo-booth feel: a cream canvas, soft
+/// pastel pink accents and elegant charcoal typography.
 abstract final class AppColors {
-  /// Warm cream/off-white app background.
-  static const Color background = Color(0xFFFFF8F1);
+  // ---------------------------------------------------------------------------
+  // Surfaces
+  // ---------------------------------------------------------------------------
 
-  /// Slightly deeper cream for elevated cards and secondary surfaces.
-  static const Color surface = Color(0xFFFBEFE4);
+  /// Warm cream app canvas.
+  static const Color background = Color(0xFFFFF9F5);
 
-  /// Soft pink accent used for primary actions and emphasis.
-  static const Color accent = Color(0xFFEE9FB1);
+  /// Pure white card / keepsake surface. Sits above [background].
+  static const Color surface = Color(0xFFFFFFFF);
 
-  /// Deeper pink for pressed/hover states and small accents.
-  static const Color accentDeep = Color(0xFFD97C93);
+  /// Sunken cream panel used for grouped controls and wells.
+  static const Color surfaceMuted = Color(0xFFFDF0E6);
 
-  /// Dark charcoal primary text.
-  static const Color textPrimary = Color(0xFF2A2522);
+  /// Soft pink wash for selected and highlighted regions.
+  static const Color surfaceTint = Color(0xFFFFE4EB);
 
-  /// Warm grey for secondary text.
-  static const Color textSecondary = Color(0xFF6B6259);
+  /// Neutral scrim for image overlays, countdown backdrops and dialogs.
+  static const Color scrim = Color(0x59302B30);
 
-  /// Muted warm grey for captions and disabled text.
-  static const Color textMuted = Color(0xFF9A8F84);
+  // ---------------------------------------------------------------------------
+  // Accents
+  // ---------------------------------------------------------------------------
 
-  /// Hairline separators and subtle borders.
-  static const Color line = Color(0xFFEBDDD0);
+  /// Primary pastel pink — primary actions, active states, progress.
+  static const Color accent = Color(0xFFF4A7B9);
 
-  /// Text/controls rendered on the accent color.
+  /// Lightest pink — decorative fills and soft chips.
+  static const Color accentSoft = Color(0xFFFFE4EB);
+
+  /// Saturated pink — pressed states, emphasis fills, decorative overlays.
+  static const Color accentDeep = Color(0xFFE3819A);
+
+  /// Dark pink with AA contrast on cream — accent *text* on light surfaces.
+  static const Color accentInk = Color(0xFF9C4A61);
+
+  /// Text and icons rendered on top of [accent].
   static const Color onAccent = Colors.white;
+
+  // ---------------------------------------------------------------------------
+  // Text
+  // ---------------------------------------------------------------------------
+
+  /// Charcoal primary text.
+  static const Color textPrimary = Color(0xFF302B30);
+
+  /// Warm grey secondary text.
+  static const Color textSecondary = Color(0xFF81777D);
+
+  /// Muted grey for captions, hints and disabled labels.
+  static const Color textMuted = Color(0xFFAFA4A9);
+
+  /// Text and icons rendered on dark surfaces such as the charcoal frame.
+  static const Color onDark = Colors.white;
+
+  // ---------------------------------------------------------------------------
+  // Lines, dividers and status
+  // ---------------------------------------------------------------------------
+
+  /// Hairline separators and subtle card borders.
+  static const Color line = Color(0xFFF2E4DA);
+
+  /// Slightly stronger border for emphasized or selected outlines.
+  static const Color lineStrong = Color(0xFFE6D3C7);
+
+  /// Error / destructive accent used for failure feedback.
+  static const Color danger = Color(0xFFC8503F);
+
+  /// Confirmation accent used for success feedback.
+  static const Color success = Color(0xFF4F9D7E);
 }

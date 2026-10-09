@@ -16,4 +16,15 @@ enum PhotoLayout {
 
   /// Grid rows for this layout.
   final int rows;
+
+  /// Number of photos this layout holds — the number of captures and the
+  /// number of grid cells always agree.
+  int get photoCount => cols * rows;
+
+  /// Grid arrangement signature, e.g. '2x2'. Two layouts are visually
+  /// identical only if their signatures match.
+  String get contentSignature => '${cols}x$rows';
+
+  /// Short human description, e.g. '4 photos · 2×2'.
+  String get description => '$photoCount photos · $cols×$rows';
 }

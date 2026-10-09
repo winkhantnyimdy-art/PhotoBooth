@@ -183,7 +183,7 @@ void main() {
         find.text('Failed to render photo strip. Please try again.'),
         findsOneWidget,
       );
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+      expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
       expect(find.text('Save to Photos'), findsNothing);
 
@@ -366,6 +366,12 @@ void main() {
       await tester.tap(find.text('Go to Export'));
       await tester.pump();
       await pumpUntilRenderSettles(tester);
+      // Finish the push transition. The incoming route is offset horizontally
+      // while it animates, which would put the action row outside the viewport
+      // and make the tap below miss. A fixed pump is used rather than
+      // pumpAndSettle because the export spinner animates indefinitely.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
       expect(find.text('Save to Photos'), findsOneWidget);
 
       await tester.tap(find.text('Make Another'));

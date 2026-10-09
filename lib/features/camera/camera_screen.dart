@@ -4,8 +4,12 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
+import '../../shared/app_surface.dart';
+import '../../shared/pressable.dart';
 import '../home/layout_model.dart';
 import '../review/review_screen.dart';
 import 'captured_session.dart';
@@ -22,8 +26,8 @@ typedef ControllerFactory = CameraController Function(
 /// Screen that shows a live camera preview with session flow.
 ///
 /// Implements the PhotoBooth session: start → countdown → capture
-/// (multi-shot) → Review. Photo capture is implemented in this
-/// checkpoint; decoration/export are later checkpoints.
+/// (multi-shot) → Review. Capture timing, camera lifecycle and session state
+/// handling are unchanged; only the presentation layer is styled.
 class CameraScreen extends StatefulWidget {
   const CameraScreen({
     super.key,
@@ -199,7 +203,7 @@ class _CameraScreenState extends State<CameraScreen>
       _cancelToken = CancellationToken();
     });
 
-    final totalShots = widget.layout.cols * widget.layout.rows;
+    final totalShots = widget.layout.photoCount;
     final timing = widget.timing ?? SystemTiming();
 
     final runner = SessionRunner(
@@ -210,6 +214,10 @@ class _CameraScreenState extends State<CameraScreen>
         setState(() {
           _sessionState = state;
           _countdownNumber = countdown ?? 0;
+          // The runner emits betweenShots after every successful capture, which
+          // is the only per-shot signal it reports. Counting those keeps the
+          // "shots remaining" indicator truthful.
+          if (state == CameraSessionState.betweenShots) _sessionCount++;
         });
         widget.onStateChange?.call(state, countdown: countdown, shot: shot);
       },
@@ -281,7 +289,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   Widget build(BuildContext context) {
-    final canPop = !_sessionState.isActive;
+    final bool canPop = !_sessionState.isActive;
     return PopScope(
       canPop: canPop,
       onPopInvokedWithResult: (didPop, result) {
@@ -294,15 +302,27 @@ class _CameraScreenState extends State<CameraScreen>
         appBar: AppBar(
           title: const Text('Camera'),
           automaticallyImplyLeading: true,
+          actions: <Widget>[
+            Padding(
+              padding: const EdgeInsets.only(right: S.md),
+              child: _LayoutIndicator(
+                layout: widget.layout,
+                onSwitch: _isSwitchingAllowed ? _switchCamera : null,
+              ),
+            ),
+          ],
         ),
         body: SafeArea(
+          top: false,
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _error != null
               ? _buildError()
               : _buildCameraPreview(),
         ),
-        bottomSheet: _constructControls(),
+        bottomNavigationBar: (!_loading && _error == null)
+            ? _buildControls()
+            : null,
       ),
     );
   }
@@ -339,118 +359,325 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  Widget _layoutBadge() => Align(
-    alignment: Alignment.topRight,
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: S.sm, vertical: S.xs),
-      decoration: BoxDecoration(
-        color: AppColors.accent,
-        borderRadius: R.all(R.sm),
-      ),
-      child: Text(
-        widget.layout.label,
-        style: const TextStyle(
-          color: AppColors.onAccent,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
+  /// Friendly failure card. Keeps the retry affordance so a camera problem is
+  /// always recoverable without leaving the screen.
+  Widget _buildError() => Center(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(S.lg),
+      child: AppSurface(
+        semanticLabel: 'Camera error: $_error',
+        padding: const EdgeInsets.all(S.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 62,
+              height: 62,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceTint,
+                borderRadius: R.all(R.xl),
+              ),
+              child: const Icon(
+                Icons.no_photography_rounded,
+                size: 30,
+                color: AppColors.accentInk,
+              ),
+            ),
+            const SizedBox(height: S.md),
+            Text(_error!, textAlign: TextAlign.center, style: AppText.heading),
+            const SizedBox(height: S.xs),
+            Text(
+              'Check that a camera is available, then try again.',
+              textAlign: TextAlign.center,
+              style: AppText.caption,
+            ),
+            const SizedBox(height: S.lg),
+            OutlinedButton.icon(
+              onPressed: _retry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try again'),
+            ),
+          ],
         ),
       ),
     ),
   );
 
-  Widget _buildError() => Padding(
-    padding: const EdgeInsets.all(S.md),
-    child: Column(
-      children: [
-        _layoutBadge(),
-        const SizedBox(height: S.xl),
-        Text(
-          _error!,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: AppColors.accentDeep,
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
+  /// The preview is the hero: chrome hugs the edges so the live image itself
+  /// is never obscured.
+  Widget _buildCameraPreview() => Padding(
+    padding: const EdgeInsets.fromLTRB(S.md, 0, S.md, S.md),
+    child: Stack(
+      children: <Widget>[
+        Positioned.fill(
+          child: ClipRRect(
+            borderRadius: R.all(R.lg),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.surfaceMuted,
+                borderRadius: R.all(R.lg),
+                border: Border.all(color: AppColors.line),
+              ),
+              child: CameraPreview(_controller!),
+            ),
           ),
         ),
-        const SizedBox(height: S.sm),
-        ElevatedButton(onPressed: _retry, child: const Icon(Icons.refresh)),
+        if (_sessionState == CameraSessionState.countdown)
+          Positioned.fill(child: _CountdownOverlay(number: _countdownNumber)),
+        if (_sessionState == CameraSessionState.capturing) _FlashOverlay(),
+        if (_sessionState.isActive)
+          Positioned(
+            top: S.md,
+            left: S.md,
+            right: S.md,
+            child: Center(
+              child: _ProgressIndicator(
+                captured: _sessionCount,
+                total: widget.layout.photoCount,
+              ),
+            ),
+          ),
       ],
     ),
   );
 
-  Widget _buildCameraPreview() => Stack(
-    children: [
-      Padding(
-        padding: const EdgeInsets.all(S.md),
+  /// Bottom control bar: camera switch, shutter, shot hint.
+  Widget _buildControls() => Container(
+    padding: EdgeInsets.fromLTRB(
+      S.md,
+      S.md,
+      S.md,
+      S.md + MediaQuery.paddingOf(context).bottom,
+    ),
+    decoration: const BoxDecoration(
+      color: AppColors.surface,
+      border: Border(top: BorderSide(color: AppColors.line)),
+    ),
+    child: Row(
+      children: <Widget>[
+        _CircleControl(
+          icon: Icons.cameraswitch_rounded,
+          tooltip: 'Switch camera',
+          onPressed: _isSwitchingAllowed ? _switchCamera : null,
+        ),
+        Expanded(
+          child: Center(
+            child: _ShutterButton(
+              enabled: _sessionState.isReady,
+              busy: _sessionState.isActive,
+              onPressed: _startSession,
+            ),
+          ),
+        ),
+        _ShotCountHint(total: widget.layout.photoCount),
+      ],
+    ),
+  );
+}
+
+/// Compact layout pill in the app bar: how many photos this session takes.
+class _LayoutIndicator extends StatelessWidget {
+  const _LayoutIndicator({required this.layout, this.onSwitch});
+
+  final PhotoLayout layout;
+  final VoidCallback? onSwitch;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Layout ${layout.label}, ${layout.description}',
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: S.sm + S.xs,
+          vertical: 6,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceTint,
+          borderRadius: R.pillRadius,
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(
+              Icons.grid_view_rounded,
+              size: 15,
+              color: AppColors.accentInk,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              layout.label,
+              style: AppText.buttonSmall.copyWith(
+                color: AppColors.accentInk,
+                fontSize: 12.5,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '${layout.photoCount} photos',
+              style: AppText.caption.copyWith(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+            if (onSwitch != null) ...<Widget>[
+              const SizedBox(width: 4),
+              InkWell(
+                onTap: onSwitch,
+                borderRadius: R.pillRadius,
+                child: const Padding(
+                  padding: EdgeInsets.all(2),
+                  child: Icon(
+                    Icons.swap_horiz_rounded,
+                    size: 16,
+                    color: AppColors.accentInk,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Circular icon button used for the camera switch.
+class _CircleControl extends StatelessWidget {
+  const _CircleControl({
+    required this.icon,
+    required this.tooltip,
+    this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool enabled = onPressed != null;
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: tooltip,
+        child: SizedBox(
+          width: S.touchTarget,
+          height: S.touchTarget,
+          child: Material(
+            color: enabled ? AppColors.surfaceMuted : Colors.transparent,
+            shape: const CircleBorder(side: BorderSide(color: AppColors.line)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onPressed,
+              child: Icon(
+                icon,
+                size: 21,
+                color: enabled ? AppColors.textPrimary : AppColors.textMuted,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Remaining-shot hint that balances the control bar.
+class _ShotCountHint extends StatelessWidget {
+  const _ShotCountHint({required this.total});
+
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: S.touchTarget,
+      height: S.touchTarget,
+      child: Center(
         child: Column(
-          children: [
-            _layoutBadge(),
-            const SizedBox(height: S.sm),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: R.all(R.md),
-                child: CameraPreview(_controller!),
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(
+              Icons.photo_camera_back_rounded,
+              size: 20,
+              color: AppColors.accentInk,
+            ),
+            Text(
+              '$total',
+              style: AppText.caption.copyWith(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
               ),
             ),
           ],
         ),
       ),
-      if (_sessionState == CameraSessionState.countdown)
-        _CountdownOverlay(number: _countdownNumber),
-      if (_sessionState == CameraSessionState.capturing) _FlashOverlay(),
-      if (_sessionState.isActive)
-        _ProgressIndicator(
-          current: _sessionCount + 1,
-          total: widget.layout.cols * widget.layout.rows,
-        ),
-    ],
-  );
+    );
+  }
+}
 
-  Widget _constructControls() => SafeArea(
-    child: Padding(
-      padding: EdgeInsets.symmetric(vertical: S.sm, horizontal: S.md),
-      child: Row(
-        children: [
-          if (_isSwitchingAllowed)
-            IconButton(
-              icon: const Icon(Icons.cameraswitch),
-              onPressed: _switchCamera,
-            )
-          else
-            const SizedBox(width: 48),
-          Expanded(
-            child: SizedBox(
-              height: 80,
-              child: Center(
-                child: ClipOval(
-                  key: const ValueKey('shutter'),
-                  child: Material(
-                    color: AppColors.accentDeep,
-                    child: InkWell(
-                      onTap: _sessionState.isReady ? _startSession : null,
-                      child: SizedBox(
-                        width: 70,
-                        height: 70,
-                        child: Icon(
-                          _sessionState.isReady ? Icons.camera_alt : Icons.stop,
-                          color: AppColors.onAccent,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+/// Chunky photo-booth shutter: white ring around a pink core.
+class _ShutterButton extends StatelessWidget {
+  const _ShutterButton({
+    required this.enabled,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  final bool enabled;
+  final bool busy;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: busy ? 'Stop the session' : 'Take photos',
+      child: PressableScale(
+        key: const ValueKey('shutter'),
+        enabled: enabled,
+        pressedScale: 0.93,
+        child: Container(
+          width: 78,
+          height: 78,
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.surface,
+            border: Border.all(
+              color: enabled ? AppColors.accent : AppColors.lineStrong,
+              width: 2.5,
+            ),
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: enabled ? AppColors.accent : AppColors.surfaceMuted,
+            ),
+            child: Center(
+              child: Icon(
+                busy ? Icons.stop_rounded : Icons.camera_alt_rounded,
+                color: enabled ? AppColors.onAccent : AppColors.textMuted,
+                size: 28,
               ),
             ),
           ),
-          const SizedBox(width: 48),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
-/// Countdown overlay showing a large number over the preview.
+/// Countdown badge over the preview.
+///
+/// Deliberately a centred disc instead of an opaque full-screen scrim: the
+/// number is unmistakable while the live preview stays visible.
 class _CountdownOverlay extends StatelessWidget {
   const _CountdownOverlay({required this.number});
 
@@ -458,15 +685,28 @@ class _CountdownOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: Colors.black54,
-      alignment: Alignment.center,
-      child: Text(
-        '$number',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 120,
-          fontWeight: FontWeight.w800,
+    return ColoredBox(
+      color: AppColors.scrim,
+      child: Center(
+        child: Container(
+          width: 148,
+          height: 148,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.textPrimary.withValues(alpha: 0.82),
+            border: Border.all(color: AppColors.accent, width: 3),
+          ),
+          child: AnimatedSwitcher(
+            duration: AppMotion.of(context, AppMotion.medium),
+            transitionBuilder: (Widget child, Animation<double> animation) =>
+                ScaleTransition(scale: animation, child: child),
+            child: Text(
+              '$number',
+              key: ValueKey<int>(number),
+              style: AppText.numeric.copyWith(color: AppColors.onDark),
+            ),
+          ),
         ),
       ),
     );
@@ -479,35 +719,56 @@ class _FlashOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(color: Colors.white);
+    return const ColoredBox(color: Colors.white);
   }
 }
 
-/// Progress indicator showing "N / M" during a session.
+/// Shot progress pill: "2 of 4" plus a dot per photo, so the user always knows
+/// how many shots remain.
 class _ProgressIndicator extends StatelessWidget {
-  const _ProgressIndicator({required this.current, required this.total});
+  const _ProgressIndicator({required this.captured, required this.total});
 
-  final int current;
+  final int captured;
   final int total;
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      top: S.md,
-      left: S.md,
+    final int remaining = (total - captured).clamp(0, total);
+    return Semantics(
+      label: '$captured of $total photos taken, $remaining remaining',
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: S.sm, vertical: S.xs),
+        padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.sm),
         decoration: BoxDecoration(
-          color: Colors.black54,
-          borderRadius: R.all(R.sm),
+          color: AppColors.textPrimary.withValues(alpha: 0.82),
+          borderRadius: R.pillRadius,
         ),
-        child: Text(
-          '$current / $total',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              '$captured of $total',
+              style: AppText.buttonSmall.copyWith(color: AppColors.onDark),
+            ),
+            const SizedBox(width: S.sm + S.xs),
+            for (int i = 0; i < total; i++)
+              Padding(
+                padding: const EdgeInsets.only(right: 5),
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i < captured ? AppColors.accent : AppColors.onDark,
+                    border: Border.all(
+                      color: i < captured
+                          ? AppColors.accent
+                          : AppColors.onDark.withValues(alpha: 0.5),
+                      width: 1,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
