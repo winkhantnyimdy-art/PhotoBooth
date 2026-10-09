@@ -171,16 +171,19 @@ class _StripThumbnail extends StatelessWidget {
     return SizedBox(
       height: _thumbHeight,
       child: Center(
-        child: AspectRatio(
-          aspectRatio: aspect,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: AppColors.surfaceTint,
-              borderRadius: R.all(R.sm),
-              border: Border.all(color: AppColors.line),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(3),
+        // The padding sits outside the AspectRatio so the painted strip keeps
+        // the exported aspect ratio exactly; insetting it would skew the
+        // thumbnail (worst for the short 2 CUT strip).
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: AspectRatio(
+            aspectRatio: aspect,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.surfaceTint,
+                borderRadius: R.all(R.sm),
+                border: Border.all(color: AppColors.line),
+              ),
               child: CustomPaint(
                 painter: _StripPainter(
                   layout: layout,

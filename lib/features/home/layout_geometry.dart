@@ -31,6 +31,16 @@ abstract final class PhotoStripGeometry {
   /// rect, this ratio is also what keeps captured photos undistorted.
   static const double cellAspect = 1.0;
 
+  /// Nominal sticker diameter in export pixels.
+  ///
+  /// Shared so a sticker occupies the same share of the composition on the
+  /// Decorate preview and on the exported PNG.
+  static const double stickerSize = 34.0;
+
+  /// Ratio of the gutter to a photo cell, used by previews that size cells from
+  /// the available space so their gaps match the exported strip.
+  static double gutterRatio(PhotoLayout layout) => gutter / cellWidth(layout);
+
   /// Width of one photo cell.
   static double cellWidth(PhotoLayout layout) {
     final double usable = exportWidth - (outerPadding * 2);

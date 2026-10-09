@@ -253,14 +253,15 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  void _navigateToReview() {
+  Future<void> _navigateToReview() async {
     final session = CapturedSession(
       layout: widget.layout,
       photos: List<XFile>.unmodifiable(_capturedPhotos),
       aspectRatio: _aspectRatio,
     );
-    Navigator.of(context).push(
-      MaterialPageRoute(
+    final NavigatorState navigator = Navigator.of(context);
+    await navigator.push<Object?>(
+      MaterialPageRoute<Object?>(
         builder: (_) => ReviewScreen(
           layout: session.layout,
           photos: session.photos,
@@ -268,6 +269,18 @@ class _CameraScreenState extends State<CameraScreen>
         ),
       ),
     );
+
+    // Coming back from Review means the user chose Retake (or backed out), so
+    // the session must be re-armed. Without this the camera screen is left in
+    // the `complete` state and the shutter stays disabled, stranding the user.
+    // If the whole flow was finished, this route is already gone and the
+    // `mounted` check stops us touching a disposed state.
+    if (!mounted) return;
+    setState(() {
+      _sessionState = CameraSessionState.ready;
+      _capturedPhotos.clear();
+      _cancelToken = CancellationToken();
+    });
   }
 
   void _retry() {
@@ -643,28 +656,40 @@ class _ShutterButton extends StatelessWidget {
         key: const ValueKey('shutter'),
         enabled: enabled,
         pressedScale: 0.93,
-        child: Container(
-          width: 78,
-          height: 78,
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.surface,
-            border: Border.all(
-              color: enabled ? AppColors.accent : AppColors.lineStrong,
-              width: 2.5,
-            ),
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: enabled ? AppColors.accent : AppColors.surfaceMuted,
-            ),
-            child: Center(
-              child: Icon(
-                busy ? Icons.stop_rounded : Icons.camera_alt_rounded,
-                color: enabled ? AppColors.onAccent : AppColors.textMuted,
-                size: 28,
+        // PressableScale only supplies the visual press response; the tap
+        // itself must be owned by the control, otherwise the shutter would be
+        // inert and the whole capture flow unreachable.
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: enabled ? onPressed : null,
+            customBorder: const CircleBorder(),
+            child: Container(
+              width: 78,
+              height: 78,
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.surface,
+                border: Border.all(
+                  color: enabled ? AppColors.accent : AppColors.lineStrong,
+                  width: 2.5,
+                ),
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: enabled ? AppColors.accent : AppColors.surfaceMuted,
+                ),
+                child: Center(
+                  child: Icon(
+                    busy ? Icons.stop_rounded : Icons.camera_alt_rounded,
+                    color: enabled ? AppColors.onAccent : AppColors.textMuted,
+                    size: 28,
+                  ),
+                ),
               ),
             ),
           ),

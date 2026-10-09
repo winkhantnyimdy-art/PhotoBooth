@@ -10,6 +10,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/pressable.dart';
 import '../decorate/decorate_screen.dart';
+import '../home/layout_geometry.dart';
 import '../home/layout_model.dart';
 
 /// Review screen for a completed PhotoBooth session.
@@ -149,19 +150,20 @@ class _PhotoGrid extends StatelessWidget {
   final PhotoLayout layout;
   final List<XFile> photos;
 
-  static const double _gap = S.sm;
-
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double cell = _cellSize(constraints, layout);
         if (cell <= 0) return const SizedBox.shrink();
+        // Gap is derived from the exported strip's gutter-to-cell ratio so the
+        // review grid reads at the same proportion as the finished PNG.
+        final double gap = cell * PhotoStripGeometry.gutterRatio(layout);
 
         return Center(
           child: Wrap(
-            spacing: _gap,
-            runSpacing: _gap,
+            spacing: gap,
+            runSpacing: gap,
             alignment: WrapAlignment.center,
             runAlignment: WrapAlignment.center,
             children: <Widget>[
@@ -181,10 +183,11 @@ class _PhotoGrid extends StatelessWidget {
 
   /// Largest square cell that fits the layout's grid in the available box.
   static double _cellSize(BoxConstraints constraints, PhotoLayout layout) {
+    const double gap = S.sm;
     final double byWidth =
-        (constraints.maxWidth - (_gap * (layout.cols - 1))) / layout.cols;
+        (constraints.maxWidth - (gap * (layout.cols - 1))) / layout.cols;
     final double byHeight =
-        (constraints.maxHeight - (_gap * (layout.rows - 1))) / layout.rows;
+        (constraints.maxHeight - (gap * (layout.rows - 1))) / layout.rows;
     final double cell = byWidth < byHeight ? byWidth : byHeight;
     return cell.isFinite && cell > 0 ? cell : 0;
   }

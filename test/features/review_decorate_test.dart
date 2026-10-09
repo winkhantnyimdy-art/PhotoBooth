@@ -205,6 +205,35 @@ void main() {
       expect(find.text('Your photos'), findsOneWidget);
     });
 
+    for (final PhotoLayout layout in PhotoLayout.values) {
+      testWidgets('preview grid never overlaps the branding footer', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          _app(DecorateScreen(layout: layout, photos: const <XFile>[])),
+        );
+        await tester.pumpAndSettle();
+
+        final Rect grid = tester.getRect(
+          find.byKey(const ValueKey('composition-grid')),
+        );
+        final Rect footer = tester.getRect(
+          find.byKey(const ValueKey('composition-footer')),
+        );
+
+        // The photos must sit entirely above the branding strip, exactly as
+        // the exporter lays them out within the content area.
+        expect(
+          grid.bottom,
+          lessThanOrEqualTo(footer.top + 0.5),
+          reason:
+              '${layout.label}: the photo grid overlaps the branding footer',
+        );
+        // And the footer must be a real band, not collapsed to nothing.
+        expect(footer.height, greaterThan(0));
+      });
+    }
+
     for (final double width in <double>[320, 430]) {
       testWidgets('renders without overflow at ${width.toInt()}px', (
         tester,

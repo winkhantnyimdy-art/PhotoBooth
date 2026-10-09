@@ -103,7 +103,7 @@ class _ExportScreenState extends State<ExportScreen> {
 
   Future<void> _handleSave() async {
     final Uint8List? image = _renderedImage;
-    if (image == null || _isSaving) return;
+    if (image == null || _isSaving || _isSharing) return;
 
     setState(() => _isSaving = true);
     try {
@@ -151,7 +151,9 @@ class _ExportScreenState extends State<ExportScreen> {
 
   Future<void> _handleShare() async {
     final Uint8List? image = _renderedImage;
-    if (image == null || _isSharing) return;
+    // Guard both ways: a share must not start while a save is still writing,
+    // and vice versa, otherwise the two platform calls can interleave.
+    if (image == null || _isSharing || _isSaving) return;
 
     setState(() => _isSharing = true);
     try {
@@ -288,50 +290,69 @@ class _ExportScreenState extends State<ExportScreen> {
   Widget _buildReady() {
     final double aspect = PhotoStripGeometry.aspectRatio(widget.layout);
 
-    return Column(
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.fromLTRB(S.lg, S.xs, S.lg, S.md),
-          child: Column(
-            children: <Widget>[
-              Text(
-                'Your photos are ready!',
-                textAlign: TextAlign.center,
-                style: AppText.display,
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        // On a short screen the headline steps down and the subtitle is
+        // dropped: the strip and the actions matter more than the greeting,
+        // and it keeps every action above the fold at large text scales.
+        final bool compact = constraints.maxHeight < 520;
+        return Column(
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(S.lg, S.xs, S.lg, S.md),
+              child: Column(
+                children: <Widget>[
+                  Text(
+                    'Your photos are ready!',
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    // Capped so the headline cannot wrap into a tall block
+                    // that pushes the actions off a short screen.
+                    textScaler: MediaQuery.textScalerOf(context)
+                        .clamp(maxScaleFactor: 1.3),
+                    style: compact ? AppText.title : AppText.display,
+                  ),
+                  if (!compact) ...<Widget>[
+                    const SizedBox(height: S.xs),
+                    Text(
+                      'Your ${widget.layout.photoCount}-photo strip is ready '
+                      'to save or share.',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.body,
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: S.xs),
-              Text(
-                'Saved as a ${widget.layout.photoCount}-photo strip.',
-                textAlign: TextAlign.center,
-                style: AppText.body,
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.lg),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: _KeepsakePreview(
-                  bytes: _renderedImage!,
-                  aspectRatio: aspect,
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: S.lg),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: _KeepsakePreview(
+                      bytes: _renderedImage!,
+                      aspectRatio: aspect,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-        _ActionBar(
-          isSaving: _isSaving,
-          isSharing: _isSharing,
-          onSave: _handleSave,
-          onShare: _handleShare,
-          onMakeAnother: () {
-            Navigator.of(context).popUntil((route) => route.isFirst);
-          },
-        ),
-      ],
+            _ActionBar(
+              isSaving: _isSaving,
+              isSharing: _isSharing,
+              onSave: _handleSave,
+              onShare: _handleShare,
+              onMakeAnother: () {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 }

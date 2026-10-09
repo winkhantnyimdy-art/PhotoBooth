@@ -372,6 +372,7 @@ class _Composition extends StatelessWidget {
               PhotoStripGeometry.contentHeight(layout) * scale;
           final double pad = PhotoStripGeometry.outerPadding * scale;
           final double gutter = PhotoStripGeometry.gutter * scale;
+          final double stickerSize = PhotoStripGeometry.stickerSize * scale;
 
           return DecoratedBox(
             decoration: BoxDecoration(
@@ -389,8 +390,12 @@ class _Composition extends StatelessWidget {
                   left: pad,
                   right: pad,
                   top: pad,
-                  bottom: pad,
+                  // The grid occupies the content area only. Without the footer
+                  // term here the photos are centred over the branding strip
+                  // and sit ~75 export pixels too low.
+                  bottom: math.max(0, height - gridHeight + pad),
                   child: _PhotoGrid(
+                    key: const ValueKey('composition-grid'),
                     layout: layout,
                     photos: photos,
                     gutter: gutter,
@@ -410,14 +415,16 @@ class _Composition extends StatelessWidget {
                     ),
                   ),
                 // Stickers map onto the grid area only, exactly as the exporter
-                // does, so preview and export agree.
+                // does, so preview and export agree. The exporter draws its
+                // glyphs centred on that point at a fixed size in export
+                // pixels, so the preview matches both.
                 for (final StickerPlacement sticker in state.stickers)
                   Positioned(
-                    left: sticker.x * width,
-                    top: sticker.y * gridHeight,
+                    left: sticker.x * width - (stickerSize / 2),
+                    top: sticker.y * gridHeight - (stickerSize / 2),
                     child: Icon(
                       sticker.type.icon,
-                      size: 22 * scale,
+                      size: stickerSize,
                       color: onDark ? AppColors.onDark : AppColors.accentDeep,
                       semanticLabel: sticker.type.label,
                     ),
@@ -427,7 +434,11 @@ class _Composition extends StatelessWidget {
                   right: 0,
                   bottom: 0,
                   height: math.max(0, height - gridHeight),
-                  child: _BrandingStrip(state: state, onDark: onDark),
+                  child: _BrandingStrip(
+                    key: const ValueKey('composition-footer'),
+                    state: state,
+                    onDark: onDark,
+                  ),
                 ),
               ],
             ),
@@ -441,6 +452,7 @@ class _Composition extends StatelessWidget {
 /// Photo grid drawn from the shared geometry.
 class _PhotoGrid extends StatelessWidget {
   const _PhotoGrid({
+    super.key,
     required this.layout,
     required this.photos,
     required this.gutter,
@@ -591,7 +603,7 @@ class _OverlayPainter extends CustomPainter {
 
 /// Branding footer inside the composition preview.
 class _BrandingStrip extends StatelessWidget {
-  const _BrandingStrip({required this.state, required this.onDark});
+  const _BrandingStrip({super.key, required this.state, required this.onDark});
 
   final DecorationState state;
   final bool onDark;

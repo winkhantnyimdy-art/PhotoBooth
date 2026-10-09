@@ -122,6 +122,36 @@ void main() {
         );
       }
     });
+
+    test('gutterRatio lets previews match the exported gap', () {
+      for (final PhotoLayout layout in PhotoLayout.values) {
+        expect(
+          PhotoStripGeometry.gutterRatio(layout),
+          closeTo(
+            PhotoStripGeometry.gutter / PhotoStripGeometry.cellWidth(layout),
+            0.0001,
+          ),
+        );
+        // A preview cell of N logical px must use N * ratio as its gap.
+        const double cell = 100;
+        expect(
+          cell * PhotoStripGeometry.gutterRatio(layout),
+          closeTo(100 * 16 / 576, 0.001),
+        );
+      }
+    });
+
+    test('stickerSize is a fraction of the strip width', () {
+      // Keeps a sticker the same visual size on the preview and the export.
+      expect(
+        PhotoStripGeometry.stickerSize / PhotoStripGeometry.exportWidth,
+        closeTo(34 / 1200, 0.0001),
+      );
+      expect(
+        PhotoStripGeometry.stickerSize,
+        lessThan(PhotoStripGeometry.cellWidth(PhotoLayout.cut4)),
+      );
+    });
   });
 
   group('PhotoStripRenderer', () {
