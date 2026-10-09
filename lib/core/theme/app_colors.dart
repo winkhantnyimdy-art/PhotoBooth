@@ -28,6 +28,13 @@ abstract final class AppColors {
   /// Neutral scrim for image overlays, countdown backdrops and dialogs.
   static const Color scrim = Color(0x59302B30);
 
+  /// Backdrop behind the live camera feed.
+  ///
+  /// A camera viewport must be dark: a camera that fails to deliver frames
+  /// then reads as an obviously empty black window rather than a blank white
+  /// page, and the viewfinder matches how a real booth looks.
+  static const Color previewBackdrop = Color(0xFF171214);
+
   // ---------------------------------------------------------------------------
   // Accents
   // ---------------------------------------------------------------------------

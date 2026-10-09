@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:photo_booth/core/theme/app_colors.dart';
 import 'package:photo_booth/core/theme/app_theme.dart';
 import 'package:photo_booth/features/camera/camera_screen.dart';
 import 'package:photo_booth/features/camera/session_state.dart';
@@ -25,7 +28,18 @@ class _FakeCameraController extends CameraController {
   }
 
   @override
-  Widget buildPreview() => const ColoredBox(color: Color(0xFF2A2522));
+  Widget buildPreview() => const _FakePreview();
+}
+
+/// Marks the stub widget returned by [_FakeCameraController.buildPreview] so
+/// tests can measure the feed's on-screen box.
+class _FakePreview extends StatelessWidget {
+  const _FakePreview();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(color: Color(0xFF2A2522));
+  }
 }
 
 const CameraDescription _front = CameraDescription(
@@ -62,6 +76,7 @@ Future<_FakeCameraController> _pumpReadyCamera(
   required TestTiming timing,
   required List<CameraSessionState> states,
   List<XFile>? captured,
+  Completer<void>? captureGate,
 }) async {
   final List<XFile> photos = captured ?? <XFile>[];
   final List<_FakeCameraController> created = <_FakeCameraController>[];
@@ -82,6 +97,9 @@ Future<_FakeCameraController> _pumpReadyCamera(
             },
         captureProvider: () async {
           photos.add(XFile('/tmp/shot_${photos.length + 1}.jpg'));
+          // Holding the capture open keeps the session deterministically in
+          // the `capturing` state while the test inspects the flash overlay.
+          if (captureGate != null) await captureGate.future;
           return photos.last;
         },
         timing: timing,
@@ -281,6 +299,191 @@ void main() {
       );
 
       expect(find.bySemanticsLabel('Switch camera'), findsOneWidget);
+    });
+  });
+
+  group('Camera preview presentation', () {
+    for (final Size surface in <Size>[
+      const Size(320, 568),
+      const Size(375, 667),
+      const Size(390, 844),
+      const Size(430, 932),
+    ]) {
+      testWidgets('the preview is given real space at '
+          '${surface.width.toInt()}x${surface.height.toInt()}', (tester) async {
+        // The control bar once expanded to the full screen height and left
+        // the viewfinder with zero height, which read on device as a
+        // completely white preview.
+        tester.view.physicalSize = Size(surface.width * 3, surface.height * 3);
+        tester.view.devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+
+        final TestTiming timing = TestTiming();
+        await _pumpReadyCamera(
+          tester,
+          layout: PhotoLayout.cut2,
+          timing: timing,
+          states: <CameraSessionState>[],
+        );
+
+        // The viewport must get the majority of the screen: this is exactly
+        // what collapsed to zero height when the control bar was a
+        // bottomNavigationBar.
+        final Size viewport = tester.getSize(
+          find.byKey(const ValueKey('camera-viewport')),
+        );
+        expect(viewport.height, greaterThan(surface.height / 3));
+        expect(viewport.width, greaterThan(0));
+
+        // The feed inside it is letterboxed, so assert it is usable rather
+        // than a fixed fraction of the screen.
+        final Size feed = tester.getSize(find.byType(_FakePreview));
+        expect(feed.width, greaterThan(100));
+        expect(feed.height, greaterThan(60));
+        expect(feed.width, lessThanOrEqualTo(viewport.width));
+        expect(feed.height, lessThanOrEqualTo(viewport.height));
+
+        // The control bar must stay compact, not swallow the screen.
+        final Size shutter = tester.getSize(
+          find.byKey(const ValueKey('shutter')),
+        );
+        expect(shutter.height, lessThan(surface.height / 2));
+      });
+    }
+
+    testWidgets('the viewport is dark, not a light page', (tester) async {
+      final TestTiming timing = TestTiming();
+      await _pumpReadyCamera(
+        tester,
+        layout: PhotoLayout.cut2,
+        timing: timing,
+        states: <CameraSessionState>[],
+      );
+
+      // A camera that delivers no frames must read as an empty viewfinder,
+      // never as a white page.
+      final Set<Color?> backdropColors = tester
+          .widgetList<DecoratedBox>(find.byType(DecoratedBox))
+          .map((DecoratedBox box) {
+            final Decoration decoration = box.decoration;
+            return decoration is BoxDecoration ? decoration.color : null;
+          })
+          .toSet();
+
+      expect(
+        backdropColors,
+        contains(AppColors.previewBackdrop),
+        reason: 'the camera viewport must be painted dark',
+      );
+      // The old cream surface must not be used behind the feed any more.
+      expect(
+        backdropColors,
+        isNot(contains(AppColors.surfaceMuted)),
+        reason: 'cream behind the feed is what made a blank preview look white',
+      );
+    });
+
+    testWidgets('the feed fills the viewport instead of collapsing', (
+      tester,
+    ) async {
+      final TestTiming timing = TestTiming();
+      await _pumpReadyCamera(
+        tester,
+        layout: PhotoLayout.cut2,
+        timing: timing,
+        states: <CameraSessionState>[],
+      );
+
+      // CameraPreview supplies its own aspect ratio internally, so the screen
+      // must hand it a real, non-degenerate box: a collapsed or NaN box is
+      // exactly what leaves the texture unpainted (a blank white preview).
+      final Size viewport = tester.getSize(
+        find.byKey(const ValueKey('camera-viewport')),
+      );
+      final Size feed = tester.getSize(find.byType(_FakePreview));
+      expect(viewport.width, greaterThan(0));
+      expect(viewport.height, greaterThan(0));
+      expect(feed.width, greaterThan(0));
+      expect(feed.height, greaterThan(0));
+      expect(feed.width / feed.height, isNot(isNaN));
+      // The feed is letterboxed inside the viewport, never larger than it.
+      expect(feed.width, lessThanOrEqualTo(viewport.width));
+      expect(feed.height, lessThanOrEqualTo(viewport.height));
+      // And it keeps the controller's own aspect ratio rather than being
+      // stretched to the box: the plugin reports 1920/1080 for this feed once
+      // the portrait orientation is applied.
+      expect(feed.width / feed.height, closeTo(1920 / 1080, 0.02));
+    });
+
+    testWidgets('switching cameras rebuilds the preview subtree', (
+      tester,
+    ) async {
+      final TestTiming timing = TestTiming();
+      final _FakeCameraController first = await _pumpReadyCamera(
+        tester,
+        layout: PhotoLayout.cut2,
+        timing: timing,
+        states: <CameraSessionState>[],
+      );
+
+      expect(find.byKey(ValueKey<CameraController>(first)), findsOneWidget);
+
+      await tester.tap(find.bySemanticsLabel('Switch camera'));
+      for (int i = 0; i < 5; i++) {
+        await tester.pump();
+      }
+
+      // The old controller's texture subtree must be gone, not reused.
+      expect(
+        find.byKey(ValueKey<CameraController>(first)),
+        findsNothing,
+        reason: 'a new controller needs a fresh texture subtree',
+      );
+      expect(find.byType(_FakePreview), findsOneWidget);
+    });
+
+    testWidgets('the capture flash covers the whole viewport', (tester) async {
+      final TestTiming timing = TestTiming();
+      final List<CameraSessionState> states = <CameraSessionState>[];
+      final Completer<void> gate = Completer<void>();
+
+      await _pumpReadyCamera(
+        tester,
+        layout: PhotoLayout.cut2,
+        timing: timing,
+        states: states,
+        captured: <XFile>[],
+        captureGate: gate,
+      );
+
+      // Step to the first capture and hold there.
+      await tester.tap(find.byKey(const ValueKey('shutter')));
+      for (int i = 0; i < 60; i++) {
+        timing.tick();
+        await tester.pump(const Duration(milliseconds: 20));
+        if (states.contains(CameraSessionState.capturing)) break;
+      }
+      expect(states, contains(CameraSessionState.capturing));
+      await tester.pump();
+
+      // The flash is a childless ColoredBox: without StackFit.expand it would
+      // silently collapse to zero size and never be seen.
+      final RenderBox flash = tester.renderObject<RenderBox>(
+        find.byKey(const ValueKey('capture-flash')),
+      );
+      final Size viewport = tester.getSize(
+        find.byKey(const ValueKey('camera-viewport')),
+      );
+      expect(flash.size, viewport);
+      expect(flash.size.width, greaterThan(0));
+      expect(flash.size.height, greaterThan(0));
+
+      gate.complete();
+      await _runSession(
+        tester,
+        timing,
+        () => states.contains(CameraSessionState.complete),
+      );
     });
   });
 }

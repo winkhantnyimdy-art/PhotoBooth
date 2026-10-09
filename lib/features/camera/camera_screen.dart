@@ -331,11 +331,18 @@ class _CameraScreenState extends State<CameraScreen>
               ? const Center(child: CircularProgressIndicator())
               : _error != null
               ? _buildError()
-              : _buildCameraPreview(),
+              // The preview and the controls share one column so they can
+              // never starve each other. As a Scaffold `bottomNavigationBar`
+              // the control bar expanded to the full available height and
+              // left the preview with zero height, which is what made the
+              // viewfinder look like a blank white page.
+              : Column(
+                  children: <Widget>[
+                    Expanded(child: _buildCameraPreview()),
+                    _buildControls(),
+                  ],
+                ),
         ),
-        bottomNavigationBar: (!_loading && _error == null)
-            ? _buildControls()
-            : null,
       ),
     );
   }
@@ -419,72 +426,102 @@ class _CameraScreenState extends State<CameraScreen>
 
   /// The preview is the hero: chrome hugs the edges so the live image itself
   /// is never obscured.
-  Widget _buildCameraPreview() => Padding(
-    padding: const EdgeInsets.fromLTRB(S.md, 0, S.md, S.md),
-    child: Stack(
-      children: <Widget>[
-        Positioned.fill(
-          child: ClipRRect(
-            borderRadius: R.all(R.lg),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppColors.surfaceMuted,
-                borderRadius: R.all(R.lg),
-                border: Border.all(color: AppColors.line),
+  ///
+  /// The viewport is deliberately dark. The camera plugin renders the feed into
+  /// a platform texture, and a device or emulator whose camera cannot deliver
+  /// frames leaves that texture unpainted; against a dark backdrop that reads
+  /// as an empty viewfinder instead of a blank white page.
+  Widget _buildCameraPreview() {
+    final CameraController? controller = _controller;
+    if (controller == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(S.md, 0, S.md, S.md),
+      child: ClipRRect(
+        borderRadius: R.all(R.lg),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(color: AppColors.previewBackdrop),
+          // fit: expand gives every layer the full viewport. A non-positioned
+          // childless overlay (the capture flash) would otherwise collapse to
+          // zero size and never be seen.
+          child: Stack(
+            key: const ValueKey('camera-viewport'),
+            // Loose fit: the feed is the only non-positioned child, and it
+            // needs loose constraints so CameraPreview's own AspectRatio can
+            // letterbox it at its true shape. The overlays are positioned, so
+            // they still fill the viewport exactly.
+            children: <Widget>[
+              // Keyed on the controller so switching cameras always builds a
+              // fresh texture subtree instead of reusing a stale one.
+              //
+              // CameraPreview is used bare on purpose: it already applies its
+              // own AspectRatio and StackFit.expand around the platform
+              // texture, so wrapping it in a second aspect ratio here would
+              // conflict with it and collapse the feed's box.
+              Center(
+                child: KeyedSubtree(
+                  key: ValueKey<CameraController>(controller),
+                  child: CameraPreview(controller),
+                ),
               ),
-              child: CameraPreview(_controller!),
-            ),
+              if (_sessionState == CameraSessionState.countdown)
+                Positioned.fill(
+                  child: _CountdownOverlay(number: _countdownNumber),
+                ),
+              if (_sessionState == CameraSessionState.capturing)
+                const Positioned.fill(
+                  child: _FlashOverlay(key: ValueKey('capture-flash')),
+                ),
+              if (_sessionState.isActive)
+                Positioned(
+                  top: S.md,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: _ProgressIndicator(
+                      captured: _sessionCount,
+                      total: widget.layout.photoCount,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
-        if (_sessionState == CameraSessionState.countdown)
-          Positioned.fill(child: _CountdownOverlay(number: _countdownNumber)),
-        if (_sessionState == CameraSessionState.capturing) _FlashOverlay(),
-        if (_sessionState.isActive)
-          Positioned(
-            top: S.md,
-            left: S.md,
-            right: S.md,
-            child: Center(
-              child: _ProgressIndicator(
-                captured: _sessionCount,
-                total: widget.layout.photoCount,
-              ),
-            ),
-          ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 
   /// Bottom control bar: camera switch, shutter, shot hint.
+  ///
+  /// Sized to its content rather than the space it is offered, because a
+  /// loose height constraint here would let it stretch and squeeze the
+  /// preview out of existence.
   Widget _buildControls() => Container(
-    padding: EdgeInsets.fromLTRB(
-      S.md,
-      S.md,
-      S.md,
-      S.md + MediaQuery.paddingOf(context).bottom,
-    ),
+    padding: const EdgeInsets.fromLTRB(S.md, S.md, S.md, S.md),
     decoration: const BoxDecoration(
       color: AppColors.surface,
       border: Border(top: BorderSide(color: AppColors.line)),
     ),
-    child: Row(
-      children: <Widget>[
-        _CircleControl(
-          icon: Icons.cameraswitch_rounded,
-          tooltip: 'Switch camera',
-          onPressed: _isSwitchingAllowed ? _switchCamera : null,
-        ),
-        Expanded(
-          child: Center(
-            child: _ShutterButton(
-              enabled: _sessionState.isReady,
-              busy: _sessionState.isActive,
-              onPressed: _startSession,
+    child: IntrinsicHeight(
+      child: Row(
+        children: <Widget>[
+          _CircleControl(
+            icon: Icons.cameraswitch_rounded,
+            tooltip: 'Switch camera',
+            onPressed: _isSwitchingAllowed ? _switchCamera : null,
+          ),
+          Expanded(
+            child: Center(
+              child: _ShutterButton(
+                enabled: _sessionState.isReady,
+                busy: _sessionState.isActive,
+                onPressed: _startSession,
+              ),
             ),
           ),
-        ),
-        _ShotCountHint(total: widget.layout.photoCount),
-      ],
+          _ShotCountHint(total: widget.layout.photoCount),
+        ],
+      ),
     ),
   );
 }
@@ -739,8 +776,11 @@ class _CountdownOverlay extends StatelessWidget {
 }
 
 /// Flash overlay shown briefly on capture.
+///
+/// Childless on purpose, so it relies on the parent [Stack]'s
+/// `StackFit.expand` to fill the viewport.
 class _FlashOverlay extends StatelessWidget {
-  const _FlashOverlay();
+  const _FlashOverlay({super.key});
 
   @override
   Widget build(BuildContext context) {
