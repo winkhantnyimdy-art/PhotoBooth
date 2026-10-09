@@ -3,15 +3,18 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/pressable.dart';
+import '../../shared/retro_brand.dart';
 import 'layout_model.dart';
 import 'layout_preview.dart';
 
 import 'package:photo_booth/features/camera/camera_screen.dart';
 
 /// The Home screen: brand, layout selection and the start flow.
+///
+/// Concept C: pale yellow chrome, a coral decal wordmark, white layout cards
+/// and one unmissable coral call to action.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -27,22 +30,27 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: DecoratedBox(
-        // Soft radial wash behind the brand keeps the cream canvas from
-        // reading as flat white.
+        // Faint pink wash in the corner keeps the flat yellow from looking
+        // like an empty page.
         decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(0, -0.9),
-            radius: 1.15,
-            colors: <Color>[AppColors.surfaceTint, AppColors.background],
-            stops: <double>[0.0, 0.62],
+          gradient: LinearGradient(
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+            colors: <Color>[AppColors.accentSoft, AppColors.background],
+            stops: <double>[0.0, 0.45],
           ),
         ),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
-              final bool compact = constraints.maxHeight < 640;
+              final bool compact = constraints.maxHeight < 620;
               return SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(S.lg, S.md, S.lg, S.md),
+                padding: const EdgeInsets.fromLTRB(
+                  S.lg,
+                  S.md,
+                  S.lg,
+                  S.md,
+                ),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     minHeight: constraints.maxHeight - (S.md * 2),
@@ -50,18 +58,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
-                      const _BrandHeader(),
+                      const _Hero(),
                       SizedBox(height: compact ? S.md : S.lg),
                       Text(
                         'Pick your strip',
-                        style: AppText.title,
                         textAlign: TextAlign.center,
+                        style: AppText.title,
                       ),
-                      const SizedBox(height: S.xs),
+                      const SizedBox(height: S.xxs),
                       Text(
                         'We will take ${_selected.photoCount} photos in a row.',
-                        style: AppText.body,
                         textAlign: TextAlign.center,
+                        style: AppText.body,
                       ),
                       SizedBox(height: compact ? S.md : S.lg),
                       _LayoutChoices(
@@ -96,64 +104,44 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Brand mark and wordmark.
-class _BrandHeader extends StatelessWidget {
-  const _BrandHeader();
+/// Brand block: decal wordmark with playful sticker confetti.
+class _Hero extends StatelessWidget {
+  const _Hero();
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Stack(
+      alignment: Alignment.center,
       children: <Widget>[
-        const _BrandMark(),
-        const SizedBox(height: S.md),
-        Text(
-          AppTheme.brand,
-          textAlign: TextAlign.center,
-          style: AppText.display.copyWith(letterSpacing: -1),
+        const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            PhotoBoothWordmark(fontSize: 34),
+            SizedBox(height: S.xs),
+            Text(
+              'Little moments, printed beautifully.',
+              textAlign: TextAlign.center,
+              style: AppText.body,
+            ),
+          ],
         ),
-        const SizedBox(height: S.xs),
-        Text(
-          'Little moments, printed beautifully.',
-          textAlign: TextAlign.center,
-          style: AppText.body,
+        // Confetti pinned to the corners of the hero block.
+        const Positioned(
+          left: 0,
+          top: 6,
+          child: RetroSparkleDot(size: 20, color: AppColors.popBlue),
+        ),
+        const Positioned(
+          right: 6,
+          top: 0,
+          child: RetroSparkleDot(size: 16, color: AppColors.popPink),
         ),
       ],
     );
   }
 }
 
-/// Rounded brand tile with a soft pink glow.
-class _BrandMark extends StatelessWidget {
-  const _BrandMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 76,
-      height: 76,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: AppColors.accent,
-        borderRadius: R.all(R.xl),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: AppColors.accent.withValues(alpha: 0.42),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: const Icon(
-        Icons.photo_camera_rounded,
-        size: 38,
-        color: AppColors.onAccent,
-      ),
-    );
-  }
-}
-
-/// The two layout choices, side by side so both stay visible without
-/// scrolling on short screens.
+/// The layout choices, side by side so both stay visible without scrolling.
 class _LayoutChoices extends StatelessWidget {
   const _LayoutChoices({required this.selected, required this.onSelected});
 
@@ -191,10 +179,26 @@ class _StartButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PressableScale(
-      child: FilledButton.icon(
-        onPressed: onPressed,
-        icon: const Icon(Icons.auto_awesome_rounded, size: 20),
-        label: const Text('Start Photo Booth'),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: R.pillRadius,
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: AppColors.accent.withValues(alpha: 0.45),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: FilledButton.icon(
+          onPressed: onPressed,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(58),
+            textStyle: AppText.button.copyWith(fontSize: 17),
+          ),
+          icon: const Icon(Icons.auto_awesome_rounded, size: 22),
+          label: const Text('Start Photo Booth'),
+        ),
       ),
     );
   }

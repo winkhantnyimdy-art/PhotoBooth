@@ -17,7 +17,7 @@ void main() {
   group('HomeScreen', () {
     testWidgets('renders', (tester) async {
       await tester.pumpWidget(const App());
-      expect(find.text(AppTheme.brand), findsOneWidget);
+      expect(find.text(AppTheme.brand), findsAtLeastNWidgets(1));
     });
 
     testWidgets('4 CUT is selected by default', (tester) async {
@@ -133,7 +133,7 @@ void main() {
       await tester.tap(find.byTooltip('Back'));
       await tester.pump();
       await tester.pump();
-      expect(find.text(AppTheme.brand), findsOneWidget);
+      expect(find.text(AppTheme.brand), findsAtLeastNWidgets(1));
     });
   });
 
@@ -209,7 +209,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Branding and the primary action must both be usable.
-        expect(find.text(AppTheme.brand), findsOneWidget);
+        expect(find.text(AppTheme.brand), findsAtLeastNWidgets(1));
         final Rect start = tester.getRect(find.text('Start Photo Booth'));
         expect(start.left, greaterThanOrEqualTo(0));
         expect(start.right, lessThanOrEqualTo(width));

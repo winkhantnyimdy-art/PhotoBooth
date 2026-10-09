@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
 import 'app_radius.dart';
+import 'app_shadows.dart';
 import 'app_spacing.dart';
 import 'app_typography.dart';
 
-/// Centralized app theme for PhotoBooth.
+/// Centralized app theme for PhotoBooth — **Concept C, Retro Pop**.
 ///
-/// Builds the Material light theme from the shared token files so a single
-/// edit to [AppColors], [R], [S], [AppText] or [AppShadows] propagates across
-/// the whole app.
+/// Built entirely from the token files so a single edit to [AppColors], [R],
+/// [S], [AppText] or [AppShadows] propagates across the whole app.
+///
+/// The Retro Pop voice: chunky pill buttons in coral, white cards floating on
+/// a pale yellow canvas, and generous soft shadows instead of hard Material
+/// elevation.
 abstract final class AppTheme {
   static const String brand = 'PhotoBooth';
 
@@ -17,21 +21,21 @@ abstract final class AppTheme {
   static const List<String> fontFamilies = <String>['System'];
 
   static ThemeData light() {
-    final ColorScheme scheme =
-        ColorScheme.fromSeed(
-          seedColor: AppColors.accent,
-          brightness: Brightness.light,
-        ).copyWith(
-          primary: AppColors.accent,
-          onPrimary: AppColors.onAccent,
-          secondary: AppColors.accentDeep,
-          onSecondary: AppColors.onAccent,
-          surface: AppColors.surface,
-          onSurface: AppColors.textPrimary,
-          error: AppColors.danger,
-          onError: Colors.white,
-          outline: AppColors.lineStrong,
-        );
+    final ColorScheme scheme = ColorScheme.fromSeed(
+      seedColor: AppColors.accent,
+      brightness: Brightness.light,
+    ).copyWith(
+      primary: AppColors.accent,
+      onPrimary: AppColors.onAccent,
+      secondary: AppColors.popBlue,
+      onSecondary: AppColors.popInk,
+      tertiary: AppColors.popYellow,
+      surface: AppColors.surface,
+      onSurface: AppColors.textPrimary,
+      error: AppColors.danger,
+      onError: Colors.white,
+      outline: AppColors.lineStrong,
+    );
 
     final ThemeData base = ThemeData(
       useMaterial3: true,
@@ -89,11 +93,10 @@ abstract final class AppTheme {
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.accent,
           foregroundColor: AppColors.onAccent,
-          disabledBackgroundColor: AppColors.accent.withValues(alpha: 0.45),
-          disabledForegroundColor: AppColors.onAccent.withValues(alpha: 0.9),
+          disabledBackgroundColor: AppColors.accent.withValues(alpha: 0.4),
+          disabledForegroundColor: AppColors.onAccent.withValues(alpha: 0.85),
           elevation: 0,
-          // A finite width keeps these usable inside a Row; full width comes
-          // from a stretched parent, not from an infinite minimum.
+          // Finite width keeps these usable inside a Row.
           minimumSize: const Size(0, 54),
           padding: const EdgeInsets.symmetric(horizontal: S.lg),
           shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
@@ -106,7 +109,7 @@ abstract final class AppTheme {
           foregroundColor: AppColors.textPrimary,
           disabledForegroundColor: AppColors.textMuted,
           minimumSize: const Size(0, 54),
-          side: const BorderSide(color: AppColors.lineStrong, width: 1.5),
+          side: const BorderSide(color: AppColors.lineStrong, width: 2),
           shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
           textStyle: AppText.button,
         ),
@@ -125,7 +128,7 @@ abstract final class AppTheme {
         selectedColor: AppColors.accent,
         checkmarkColor: AppColors.onAccent,
         showCheckmark: false,
-        side: const BorderSide(color: AppColors.line),
+        side: const BorderSide(color: AppColors.lineStrong, width: 1.5),
         labelStyle: AppText.label,
         secondaryLabelStyle: AppText.label.copyWith(color: AppColors.onAccent),
         padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.sm),
@@ -156,7 +159,7 @@ abstract final class AppTheme {
         backgroundColor: AppColors.textPrimary,
         contentTextStyle: AppText.label.copyWith(color: AppColors.onDark),
         elevation: 3,
-        shape: RoundedRectangleBorder(borderRadius: R.all(R.sm)),
+        shape: RoundedRectangleBorder(borderRadius: R.all(R.pill)),
         insetPadding: const EdgeInsets.all(S.md),
       ),
       dialogTheme: DialogThemeData(

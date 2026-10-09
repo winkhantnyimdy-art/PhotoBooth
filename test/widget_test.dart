@@ -12,7 +12,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const App());
 
-    expect(find.text(AppTheme.brand), findsOneWidget);
+    expect(find.text(AppTheme.brand), findsAtLeastNWidgets(1));
     expect(find.byType(HomeScreen), findsOneWidget);
     // Feature stubs must not leak onto the initial screen.
     expect(find.text('Camera'), findsNothing);

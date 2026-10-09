@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 
+import '../../core/art/retro_artwork.dart';
 import '../../core/theme/app_colors.dart';
 import '../home/layout_geometry.dart';
 import '../home/layout_model.dart';
@@ -20,6 +21,9 @@ import '../decorate/decoration_model.dart';
 /// what guarantees the Home card, the Decorate preview and the exported PNG
 /// show the same arrangement — and that captured photos are never stretched,
 /// because each photo is decoded into a cell of the strip's own aspect.
+///
+/// Retro Pop presentation: white paper, a navy dashed border and the same
+/// decal stickers the Decorate preview draws ([RetroArtwork]).
 class PhotoStripRenderer {
   /// Target export width in pixels.
   static const double exportWidth = PhotoStripGeometry.exportWidth;
@@ -35,7 +39,8 @@ class PhotoStripRenderer {
   }) async {
     final double height = PhotoStripGeometry.totalHeight(layout);
     final double gridHeight = PhotoStripGeometry.contentHeight(layout);
-    final bool onDark = decorationState.background == BackgroundChoice.charcoal;
+    final bool onDark =
+        decorationState.background == BackgroundChoice.charcoal;
 
     final ui.PictureRecorder recorder = ui.PictureRecorder();
     final ui.Canvas canvas = ui.Canvas(recorder);
@@ -45,17 +50,8 @@ class PhotoStripRenderer {
       ..color = decorationState.background.color;
     canvas.drawRect(ui.Rect.fromLTWH(0, 0, exportWidth, height), bgPaint);
 
-    // 2. Hairline frame edge
-    final ui.Paint borderPaint = ui.Paint()
-      ..style = ui.PaintingStyle.stroke
-      ..strokeWidth = 4
-      ..color = onDark
-          ? AppColors.line.withValues(alpha: 0.55)
-          : decorationState.background.color.withValues(alpha: 0.22);
-    canvas.drawRect(
-      ui.Rect.fromLTWH(2, 2, exportWidth - 4, height - 4),
-      borderPaint,
-    );
+    // 2. Navy dashed paper edge — the Retro Pop "sticker sheet" signature.
+    _drawDashedFrame(canvas, ui.Size(exportWidth, height), onDark);
 
     // 3. Photo cells, row-major in capture order.
     for (int i = 0; i < photos.length; i++) {
@@ -81,15 +77,13 @@ class PhotoStripRenderer {
     }
 
     // 5. Stickers — normalised coordinates map onto the grid area, matching
-    // the Decorate preview exactly.
-    final ui.Paint stickerPaint = ui.Paint()
-      ..color = onDark ? AppColors.onDark : AppColors.accentDeep;
+    // the Decorate preview exactly. Artwork is shared via RetroArtwork.
     for (final sticker in decorationState.stickers) {
       _renderSticker(
         canvas,
         sticker.type,
         ui.Offset(sticker.x * exportWidth, sticker.y * gridHeight),
-        stickerPaint,
+        PhotoStripGeometry.stickerSize,
       );
     }
 
@@ -282,154 +276,86 @@ class PhotoStripRenderer {
 
   // ---------------------------------------------------------------------------
   // Stickers
-  // ---------------------------------------------------------------------------
-
-  /// Draws every [StickerType]. Previously only heart, star and smile had
-  /// artwork, so the other five options were silently dropped from the export
-  /// even though the Decorate screen offered them.
+  //
+  // Drawn with the shared Retro Pop decal artwork so the exported strip and
+  // the live Decorate preview are pixel-identical.
   void _renderSticker(
     ui.Canvas canvas,
     StickerType type,
     ui.Offset center,
-    ui.Paint paint,
+    double size,
   ) {
-    const double size = 34;
-    switch (type) {
-      case StickerType.heart:
-        canvas.drawPath(_heartPath(center, size), paint);
-      case StickerType.star:
-        canvas.drawPath(_starPath(center, size * 0.95), paint);
-      case StickerType.sparkle:
-        canvas.drawPath(_sparklePath(center, size * 0.85), paint);
-      case StickerType.flower:
-        for (int i = 0; i < 5; i++) {
-          final double angle = (i * 3.141592653589793 / 5) - 1.5707963267948966;
-          canvas.drawCircle(
-            Offset(
-              center.dx + size * 0.55 * math.cos(angle),
-              center.dy + size * 0.55 * math.sin(angle),
-            ),
-            size * 0.38,
-            paint,
-          );
-        }
-        canvas.drawCircle(center, size * 0.32, paint);
-      case StickerType.ribbon:
-        canvas.drawRRect(
-          ui.RRect.fromRectAndRadius(
-            ui.Rect.fromCenter(
-              center: center,
-              width: size * 1.4,
-              height: size * 0.9,
-            ),
-            ui.Radius.circular(size * 0.2),
-          ),
-          paint,
-        );
-        canvas.drawPath(
-          ui.Path()
-            ..moveTo(center.dx - size * 0.5, center.dy + size * 0.35)
-            ..lineTo(center.dx - size * 0.75, center.dy + size * 0.95)
-            ..lineTo(center.dx - size * 0.1, center.dy + size * 0.7)
-            ..close(),
-          paint,
-        );
-        canvas.drawPath(
-          ui.Path()
-            ..moveTo(center.dx + size * 0.5, center.dy + size * 0.35)
-            ..lineTo(center.dx + size * 0.75, center.dy + size * 0.95)
-            ..lineTo(center.dx + size * 0.1, center.dy + size * 0.7)
-            ..close(),
-          paint,
-        );
-      case StickerType.smile:
-        canvas.drawCircle(center, size, paint);
-        final ui.Paint face = ui.Paint()
-          ..style = ui.PaintingStyle.stroke
-          ..strokeWidth = size * 0.13
-          ..strokeCap = ui.StrokeCap.round
-          ..color = AppColors.surface;
-        canvas.drawCircle(
-          Offset(center.dx - size * 0.35, center.dy - size * 0.2),
-          size * 0.1,
-          ui.Paint()..color = AppColors.surface,
-        );
-        canvas.drawCircle(
-          Offset(center.dx + size * 0.35, center.dy - size * 0.2),
-          size * 0.1,
-          ui.Paint()..color = AppColors.surface,
-        );
-        canvas.drawArc(
-          ui.Rect.fromCenter(
-            center: Offset(center.dx, center.dy + size * 0.12),
-            width: size * 1.1,
-            height: size * 0.8,
-          ),
-          0.35,
-          2.44,
-          false,
-          face,
-        );
-      case StickerType.speechBubble:
-        canvas.drawRRect(
-          ui.RRect.fromRectAndRadius(
-            ui.Rect.fromCenter(
-              center: Offset(center.dx, center.dy - size * 0.15),
-              width: size * 1.6,
-              height: size * 1.15,
-            ),
-            ui.Radius.circular(size * 0.35),
-          ),
-          paint,
-        );
-        canvas.drawPath(
-          ui.Path()
-            ..moveTo(center.dx - size * 0.3, center.dy + size * 0.3)
-            ..lineTo(center.dx - size * 0.55, center.dy + size * 0.95)
-            ..lineTo(center.dx + size * 0.05, center.dy + size * 0.4)
-            ..close(),
-          paint,
-        );
-      case StickerType.cuteSymbol:
-        canvas.drawCircle(center, size * 1.05, paint);
-        canvas.drawPath(
-          _heartPath(Offset(center.dx, center.dy - size * 0.05), size * 0.62),
-          ui.Paint()..color = AppColors.surface,
-        );
-    }
+    RetroArtwork.paintSticker(canvas, type, center, size);
   }
+
+  /// Retro Pop paper edge: a navy dashed inset border, exactly the sticker
+  /// sheet treatment in the reference. Deterministic — the dash pattern is
+  /// fixed, never random.
+  void _drawDashedFrame(ui.Canvas canvas, ui.Size size, bool onDark) {
+    final double inset = 14;
+    final double thickness = 7;
+    final double dash = 26;
+    final double gap = 18;
+    final ui.Rect frame = ui.Rect.fromLTRB(
+      inset,
+      inset,
+      size.width - inset,
+      size.height - inset,
+    );
+    final ui.Paint paint = ui.Paint()
+      ..isAntiAlias = true
+      ..style = ui.PaintingStyle.stroke
+      ..strokeWidth = thickness
+      ..strokeCap = ui.StrokeCap.round
+      ..color = onDark
+          ? AppColors.popBlue.withValues(alpha: 0.75)
+          : AppColors.popNavy;
+
+    void run(ui.Offset from, ui.Offset to) {
+      final double length = (to - from).distance;
+      if (length <= 0) return;
+      final ui.Offset dir = (to - from) / length;
+      for (double d = 0; d < length; d += dash + gap) {
+        final double end = d + dash < length ? d + dash : length;
+        canvas.drawLine(from + dir * d, from + dir * end, paint);
+      }
+    }
+
+    run(frame.topLeft, frame.topRight);
+    run(frame.topRight, frame.bottomRight);
+    run(frame.bottomRight, frame.bottomLeft);
+    run(frame.bottomLeft, frame.topLeft);
+  }
+
 
   // ---------------------------------------------------------------------------
   // Branding footer
   // ---------------------------------------------------------------------------
 
-  /// Refined footer: a hairline rule, letterspaced wordmark and an optional
-  /// date. Replaces the flat translucent grey bar, which read as a debug
-  /// overlay rather than part of the print.
+  /// Retro Pop footer: a coral, white-outlined "PHOTOBOOTH" wordmark centred in
+  /// the strip's caption band, with an optional date beneath.
+  ///
+  /// The wordmark is drawn twice — a thick white pass then the coral pass — to
+  /// reproduce the decal treatment used on the app's own header logo.
   void _renderBranding(
     ui.Canvas canvas,
     ui.Rect footer,
     DecorationState decorationState,
     bool onDark,
   ) {
-    final ui.Color ink = onDark ? AppColors.onDark : AppColors.textPrimary;
-
-    canvas.drawRect(
-      ui.Rect.fromLTWH(footer.left, footer.top, footer.width, 2),
-      ui.Paint()..color = ink.withValues(alpha: 0.12),
-    );
+    final ui.Color ink = onDark ? AppColors.onDark : AppColors.popInk;
 
     final bool hasDate = decorationState.showDate;
-    final double brandFontSize = 26;
-    final double dateFontSize = 18;
+    final double brandFontSize = 34;
+    final double dateFontSize = 20;
 
     final TextPainter brand = _textPainter(
       'PHOTOBOOTH',
       TextStyle(
         fontSize: brandFontSize,
-        fontWeight: FontWeight.w600,
-        color: ink,
-        letterSpacing: 6,
+        fontWeight: FontWeight.w900,
+        color: AppColors.accent,
+        letterSpacing: 3,
       ),
     );
     final TextPainter? date = hasDate
@@ -437,34 +363,35 @@ class PhotoStripRenderer {
             formatExportDate(decorationState.displayDate),
             TextStyle(
               fontSize: dateFontSize,
-              fontWeight: FontWeight.w400,
-              color: ink.withValues(alpha: 0.7),
+              fontWeight: FontWeight.w600,
+              color: ink.withValues(alpha: 0.75),
               letterSpacing: 2,
             ),
           )
         : null;
 
     final double blockHeight =
-        brand.height + (date == null ? 0 : date.height + 8);
+        brand.height + (date == null ? 0 : date.height + 10);
     double top = footer.center.dy - (blockHeight / 2);
 
-    brand.paint(canvas, Offset((footer.center.dx - brand.width / 2), top));
-    top += brand.height + 8;
-    date?.paint(canvas, Offset((footer.center.dx - date.width / 2), top));
-
-    // Small accent rule under the wordmark ties the footer to the palette.
-    final double ruleWidth = brand.width * 0.18;
-    canvas.drawRRect(
-      ui.RRect.fromRectAndRadius(
-        ui.Rect.fromCenter(
-          center: Offset(footer.center.dx, top + (date == null ? 16 : 6)),
-          width: ruleWidth,
-          height: 3,
-        ),
-        ui.Radius.circular(2),
+    // White halo pass, then the coral wordmark on top.
+    final TextPainter halo = _textPainter(
+      'PHOTOBOOTH',
+      TextStyle(
+        fontSize: brandFontSize,
+        fontWeight: FontWeight.w900,
+        color: AppColors.surface,
+        letterSpacing: 3,
       ),
-      ui.Paint()..color = AppColors.accent.withValues(alpha: 0.9),
     );
+    halo.paint(
+      canvas,
+      Offset(footer.center.dx - halo.width / 2, top - 4),
+    );
+    brand.paint(canvas, Offset(footer.center.dx - brand.width / 2, top));
+
+    top += brand.height + 10;
+    date?.paint(canvas, Offset(footer.center.dx - date.width / 2, top));
   }
 
   static TextPainter _textPainter(String text, TextStyle style) {

@@ -11,22 +11,22 @@ abstract final class AppShadows {
 
   /// Barely-there lift for resting cards.
   static const List<BoxShadow> soft = <BoxShadow>[
-    BoxShadow(color: Color(0x0F302B30), blurRadius: 16, offset: Offset(0, 6)),
+    BoxShadow(color: Color(0x0F121212), blurRadius: 14, offset: Offset(0, 5)),
   ];
 
-  /// Default card elevation.
+  /// Default card elevation — the white Retro Pop card on pale yellow.
   static const List<BoxShadow> card = <BoxShadow>[
-    BoxShadow(color: Color(0x14302B30), blurRadius: 26, offset: Offset(0, 10)),
+    BoxShadow(color: Color(0x14121212), blurRadius: 18, offset: Offset(0, 8)),
   ];
 
   /// Keepsake / print preview elevation.
   static const List<BoxShadow> lifted = <BoxShadow>[
-    BoxShadow(color: Color(0x1F302B30), blurRadius: 38, offset: Offset(0, 18)),
+    BoxShadow(color: Color(0x24121212), blurRadius: 30, offset: Offset(0, 14)),
   ];
 
-  /// Pink glow used to mark a selected card.
+  /// Coral glow used to mark a selected card.
   static const List<BoxShadow> selected = <BoxShadow>[
-    BoxShadow(color: Color(0x3DF4A7B9), blurRadius: 22, offset: Offset(0, 10)),
+    BoxShadow(color: Color(0x40EB3E54), blurRadius: 18, offset: Offset(0, 8)),
   ];
 
   /// White inner rim that gives a selected card a printed-edge highlight.
