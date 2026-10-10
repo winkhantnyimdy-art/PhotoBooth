@@ -123,8 +123,10 @@ class _LayoutCard extends StatelessWidget {
           ),
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Expanded(
+            SizedBox(
+              height: 40,
               child: _GridThumbnail(layout: layout),
             ),
             const SizedBox(height: 2),

@@ -78,7 +78,7 @@ class PhotoStripRenderer {
     }
 
     // 5. Stickers — normalised coordinates map onto the grid area, matching
-    // the Decorate preview exactly. Artwork is shared via RetroArtwork.
+    // the Decorate preview exactly. Artwork is shared via StickerArtwork.
     for (final sticker in decorationState.stickers) {
       _renderSticker(
         canvas,

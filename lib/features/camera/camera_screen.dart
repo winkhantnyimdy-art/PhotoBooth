@@ -333,9 +333,13 @@ class _CameraScreenState extends State<CameraScreen>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    Text(
-                      '${widget.layout.label} · ${widget.layout.photoCount} photos',
-                      style: AppText.buttonSmall,
+                    Flexible(
+                      child: Text(
+                        '${widget.layout.label} · ${widget.layout.photoCount} photos',
+                        style: AppText.buttonSmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     const SizedBox(width: 4),
                     const Icon(Icons.keyboard_arrow_down_rounded, size: 18),

@@ -278,6 +278,12 @@ void main() {
         () => find.byType(ReviewScreen).evaluate().isNotEmpty,
       );
 
+      // The capture session hands off to ReviewScreen with a push
+      // transition. Let it settle before tapping, otherwise the action row is
+      // still sliding in from the right and the tap lands off screen.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
       await tester.tap(find.text('Next'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));

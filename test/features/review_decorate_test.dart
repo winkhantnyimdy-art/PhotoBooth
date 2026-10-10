@@ -104,11 +104,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      for (final String section in <String>['FRAME', 'STYLE', 'STICKERS']) {
+      // The redesign groups the options into a tab bar, so each section is
+      // reached by selecting its tab rather than all being on screen at once.
+      for (final String section in <String>['Frames', 'Effects', 'Stickers']) {
         expect(find.text(section), findsOneWidget, reason: section);
       }
 
       // All six frames, all four styles and all eight sticker types remain.
+      await tester.tap(find.text('Frames'));
+      await tester.pumpAndSettle();
       for (final String label in <String>[
         'Cream',
         'Soft Pink',
@@ -119,6 +123,9 @@ void main() {
       ]) {
         expect(find.bySemanticsLabel('$label frame'), findsOneWidget);
       }
+
+      await tester.tap(find.text('Effects'));
+      await tester.pumpAndSettle();
       for (final String label in <String>[
         'Clean',
         'Hearts',
@@ -127,6 +134,9 @@ void main() {
       ]) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
+
+      await tester.tap(find.text('Stickers'));
+      await tester.pumpAndSettle();
       for (final StickerType type in StickerType.values) {
         expect(find.bySemanticsLabel('${type.label} sticker'), findsOneWidget);
       }
@@ -138,7 +148,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Date toggle.
+      // Date toggle lives on the Date tab.
+      await tester.tap(find.text('Date'));
+      await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.byType(Switch),
         60,
@@ -150,6 +162,8 @@ void main() {
 
       // Pick a sticker, add it, then remove it again. Controls live in a
       // scrollable panel, so scroll each one into view before tapping.
+      await tester.tap(find.text('Stickers'));
+      await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.bySemanticsLabel('Heart sticker'),
         60,
@@ -158,6 +172,13 @@ void main() {
       await tester.tap(find.bySemanticsLabel('Heart sticker'));
       await tester.pumpAndSettle();
       expect(find.text('Add Heart'), findsOneWidget);
+      // Selecting a sticker reveals the Add button, which can land below the
+      // fold, so bring it into view before tapping.
+      await tester.scrollUntilVisible(
+        find.text('Add Heart'),
+        60,
+        scrollable: find.byType(Scrollable).last,
+      );
       await tester.tap(find.text('Add Heart'));
       await tester.pumpAndSettle();
       expect(find.text('1 sticker added'), findsOneWidget);
@@ -176,19 +197,19 @@ void main() {
       await tester.pumpAndSettle();
 
       final Finder panel = find.byType(Scrollable).last;
-      await tester.scrollUntilVisible(
-        find.bySemanticsLabel('Charcoal frame'),
-        60,
-        scrollable: panel,
-      );
+      // The screen opens on the Stickers tab, so switch to Frames before
+      // reaching for a background swatch.
+      await tester.tap(find.text('Frames'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.bySemanticsLabel('Charcoal frame'));
       await tester.tap(find.bySemanticsLabel('Charcoal frame'));
       await tester.pumpAndSettle();
 
-      await tester.scrollUntilVisible(
-        find.text('Hearts'),
-        60,
-        scrollable: panel,
-      );
+      await tester.tap(find.text('Effects'));
+      await tester.pumpAndSettle();
+      // The Effects panel is short enough to fit without scrolling, so just
+      // ensure it is on screen instead of dragging the panel.
+      await tester.ensureVisible(find.text('Hearts'));
       await tester.tap(find.text('Hearts'));
       await tester.pumpAndSettle();
 
@@ -201,8 +222,18 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
 
+      // Rendering the strip is real async work, so let it drain before
+      // asserting on the export screen's ready state.
+      for (int i = 0; i < 120; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+        if (find.text('Save to Photos').evaluate().isNotEmpty) break;
+      }
+
       expect(find.text('Export'), findsNothing);
-      expect(find.text('Your photos'), findsOneWidget);
+      expect(find.text('Ready!'), findsOneWidget);
     });
 
     for (final PhotoLayout layout in PhotoLayout.values) {

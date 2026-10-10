@@ -5,22 +5,47 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:photo_booth/app/app.dart';
+import 'package:photo_booth/core/art/bubble_logo.dart';
+import 'package:photo_booth/core/theme/app_colors.dart';
 import 'package:photo_booth/core/theme/app_theme.dart';
 import 'package:photo_booth/features/home/home_screen.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
 import 'package:photo_booth/features/camera/camera_screen.dart';
 
+/// Finds the tappable card that shows [label] for a layout.
+Finder _layoutCard(String label) => find.ancestor(
+  of: find.text(label),
+  matching: find.byType(AnimatedContainer),
+);
+
+/// Whether the layout card showing [label] is drawn as the selected one.
+bool _isSelected(WidgetTester tester, String label) {
+  final AnimatedContainer card = tester.widget<AnimatedContainer>(
+    _layoutCard(label),
+  );
+  final BoxDecoration decoration =
+      card.decoration! as BoxDecoration;
+  final Border border = decoration.border! as Border;
+  return border.top.color == AppColors.popPink;
+}
+
+
 void main() {
   group('HomeScreen', () {
     testWidgets('renders', (tester) async {
       await tester.pumpWidget(const App());
-      expect(find.text(AppTheme.brand), findsAtLeastNWidgets(1));
+      // The redesign paints the wordmark as a bubble logo rather than a Text
+      // widget, so the brand is asserted by widget type now.
+      expect(find.byType(PhotoBoothBubbleLogo), findsAtLeastNWidgets(1));
     });
 
     testWidgets('4 CUT is selected by default', (tester) async {
       await tester.pumpWidget(const App());
       expect(find.text('4 CUT'), findsOneWidget);
-      expect(find.text('Popular'), findsOneWidget);
+      // The "Popular" badge is gone from the redesign, so default selection is
+      // asserted through the selected card styling instead.
+      expect(_isSelected(tester, '4 CUT'), isTrue);
+      expect(_isSelected(tester, '2 CUT'), isFalse);
     });
 
     testWidgets('selecting 2 CUT works', (tester) async {
@@ -36,7 +61,9 @@ void main() {
       await tester.tap(find.textContaining('Start Photo Booth'));
       await tester.pump();
       await tester.pump();
-      expect(find.text('Camera'), findsOneWidget);
+      // The redesign dropped the "Camera" screen title in favour of the
+      // layout badge, so assert on the screen itself.
+      expect(find.byType(CameraScreen), findsOneWidget);
     });
 
     testWidgets('Start Photo Booth passes selected layout', (tester) async {
@@ -52,8 +79,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       // Camera screen shows the selected layout badge
-      expect(find.text('Camera'), findsOneWidget);
-      expect(find.text('2 CUT'), findsOneWidget);
+      expect(find.byType(CameraScreen), findsOneWidget);
+      expect(find.textContaining('2 CUT'), findsOneWidget);
     });
   });
 
@@ -116,8 +143,9 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      // Even on error path, the layout badge is rendered.
-      expect(find.text('2 CUT'), findsOneWidget);
+      // Even on error path, the layout badge is rendered. The badge reads
+      // "2 CUT · 2 photos", so match on the layout label it contains.
+      expect(find.textContaining('2 CUT'), findsOneWidget);
     });
 
     testWidgets('back navigation works', (tester) async {
@@ -127,10 +155,11 @@ void main() {
       await tester.tap(find.textContaining('Start Photo Booth'));
       await tester.pump();
       await tester.pump();
-      await tester.tap(find.byTooltip('Back'));
+      // The redesign replaced the "Back" tooltip with a close icon button.
+      await tester.tap(find.byIcon(Icons.close_rounded).first);
       await tester.pump();
       await tester.pump();
-      expect(find.text(AppTheme.brand), findsAtLeastNWidgets(1));
+      expect(find.byType(PhotoBoothBubbleLogo), findsAtLeastNWidgets(1));
     });
   });
 
@@ -164,10 +193,14 @@ void main() {
       await tester.pumpWidget(const App());
       await tester.pumpAndSettle();
 
-      expect(find.text('We will take 4 photos in a row.'), findsOneWidget);
+      // The redesign dropped the "We will take N photos" summary in favour of
+      // the selected-card styling, so the behaviour under test is that the
+      // chosen layout becomes the selected one.
+      expect(_isSelected(tester, '4 CUT'), isTrue);
       await tester.tap(find.text('2 CUT'));
       await tester.pumpAndSettle();
-      expect(find.text('We will take 2 photos in a row.'), findsOneWidget);
+      expect(_isSelected(tester, '2 CUT'), isTrue);
+      expect(_isSelected(tester, '4 CUT'), isFalse);
     });
   });
 
@@ -184,7 +217,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Branding and the primary action must both be usable.
-        expect(find.text(AppTheme.brand), findsAtLeastNWidgets(1));
+        expect(find.byType(PhotoBoothBubbleLogo), findsAtLeastNWidgets(1));
         final Rect start = tester.getRect(find.textContaining('Start Photo Booth'));
         expect(start.left, greaterThanOrEqualTo(0));
         expect(start.right, lessThanOrEqualTo(width));

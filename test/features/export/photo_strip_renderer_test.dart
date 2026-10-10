@@ -132,11 +132,17 @@ void main() {
             0.0001,
           ),
         );
-        // A preview cell of N logical px must use N * ratio as its gap.
+        // A preview cell of N logical px must use N * ratio as its gap, so the
+        // on-screen gap scales to the exported gutter. This has to be derived
+        // per layout: a 2 column layout has a 576 export px cell while the
+        // single column 3 CUT has 1168.
         const double cell = 100;
         expect(
           cell * PhotoStripGeometry.gutterRatio(layout),
-          closeTo(100 * 16 / 576, 0.001),
+          closeTo(
+            PhotoStripGeometry.gutter * (cell / PhotoStripGeometry.cellWidth(layout)),
+            0.001,
+          ),
         );
       }
     });

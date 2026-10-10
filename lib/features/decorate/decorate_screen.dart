@@ -432,10 +432,13 @@ class _Composition extends StatelessWidget {
                   right: pad,
                   top: pad,
                   bottom: math.max(0, height - gridHeight + pad),
-                  child: _PhotoGrid(
-                    layout: layout,
-                    photos: photos,
-                    gutter: gutter,
+                  child: KeyedSubtree(
+                    key: const ValueKey<String>('composition-grid'),
+                    child: _PhotoGrid(
+                      layout: layout,
+                      photos: photos,
+                      gutter: gutter,
+                    ),
                   ),
                 ),
                 if (state.style != DecorativeStyle.clean)
@@ -465,9 +468,12 @@ class _Composition extends StatelessWidget {
                   right: 0,
                   bottom: 0,
                   height: math.max(0, height - gridHeight),
-                  child: _BrandingStrip(
-                    state: state,
-                    onDark: onDark,
+                  child: KeyedSubtree(
+                    key: const ValueKey<String>('composition-footer'),
+                    child: _BrandingStrip(
+                      state: state,
+                      onDark: onDark,
+                    ),
                   ),
                 ),
               ],
@@ -641,25 +647,31 @@ class _BrandingStrip extends StatelessWidget {
         ),
       ),
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            SizedBox(
-              width: 80,
-              child: PhotoBoothBubbleLogo(width: 80),
-            ),
-            if (state.showDate) ...<Widget>[
-              const SizedBox(height: 2),
-              Text(
-                formatExportDate(state.displayDate),
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                  color: foreground.withValues(alpha: 0.75),
-                ),
+        child: FittedBox(
+          // The footer is only as tall as the strip leaves over after the photo
+          // grid, which is small on narrow previews. Scale the branding group
+          // down to fit instead of letting it overflow the footer.
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              SizedBox(
+                width: 80,
+                child: PhotoBoothBubbleLogo(width: 80),
               ),
+              if (state.showDate) ...<Widget>[
+                const SizedBox(height: 2),
+                Text(
+                  formatExportDate(state.displayDate),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: foreground.withValues(alpha: 0.75),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
