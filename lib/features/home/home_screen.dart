@@ -1,20 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../../core/art/bubble_logo.dart';
+import '../../core/art/checkerboard.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/pressable.dart';
-import '../../shared/retro_brand.dart';
 import 'layout_model.dart';
-import 'layout_preview.dart';
 
 import 'package:photo_booth/features/camera/camera_screen.dart';
 
-/// The Home screen: brand, layout selection and the start flow.
-///
-/// Concept C: pale yellow chrome, a coral decal wordmark, white layout cards
-/// and one unmissable coral call to action.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -29,177 +25,137 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: DecoratedBox(
-        // Faint pink wash in the corner keeps the flat yellow from looking
-        // like an empty page.
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topRight,
-            end: Alignment.bottomLeft,
-            colors: <Color>[AppColors.accentSoft, AppColors.background],
-            stops: <double>[0.0, 0.45],
-          ),
-        ),
-        child: SafeArea(
-          child: LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              final bool compact = constraints.maxHeight < 620;
-              return SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(
-                  S.lg,
-                  S.md,
-                  S.lg,
-                  S.md,
+      body: SafeArea(
+        child: Column(
+          children: <Widget>[
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: <Widget>[
+                    const SizedBox(height: S.sm),
+                    const PhotoBoothBubbleLogo(width: 130),
+                    const SizedBox(height: S.sm),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: S.lg),
+                      child: PressableScale(
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => CameraScreen(layout: _selected),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.camera_alt_rounded, size: 20),
+                          label: const Text('Start Photo Booth  →'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            backgroundColor: AppColors.hotPink,
+                            textStyle: AppText.button.copyWith(fontSize: 15),
+                            shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: S.md),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: S.lg),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text('Choose Layout', style: AppText.label),
+                          const SizedBox(height: S.xs),
+                          Row(
+                            children: <Widget>[
+                              for (final PhotoLayout layout in PhotoLayout.values) ...<Widget>[
+                                Expanded(
+                                  child: _LayoutCard(
+                                    layout: layout,
+                                    selected: layout == _selected,
+                                    onTap: () => setState(() => _selected = layout),
+                                  ),
+                                ),
+                                if (layout != PhotoLayout.values.last)
+                                  const SizedBox(width: S.xs),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: S.md),
+                  ],
                 ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight - (S.md * 2),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      const _Hero(),
-                      SizedBox(height: compact ? S.md : S.lg),
-                      Text(
-                        'Pick your strip',
-                        textAlign: TextAlign.center,
-                        style: AppText.title,
-                      ),
-                      const SizedBox(height: S.xxs),
-                      Text(
-                        'We will take ${_selected.photoCount} photos in a row.',
-                        textAlign: TextAlign.center,
-                        style: AppText.body,
-                      ),
-                      SizedBox(height: compact ? S.md : S.lg),
-                      _LayoutChoices(
-                        selected: _selected,
-                        onSelected: (PhotoLayout layout) {
-                          setState(() => _selected = layout);
-                        },
-                      ),
-                      SizedBox(height: compact ? S.lg : S.xl),
-                      _StartButton(
-                        layout: _selected,
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => CameraScreen(layout: _selected),
-                            ),
-                          );
-                        },
-                      ),
-                      SizedBox(
-                        height: S.md + MediaQuery.paddingOf(context).bottom,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
+              ),
+            ),
+            const CheckerboardPattern(height: 20),
+          ],
         ),
       ),
     );
   }
 }
 
-/// Brand block: decal wordmark with playful sticker confetti.
-class _Hero extends StatelessWidget {
-  const _Hero();
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: <Widget>[
-        const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            PhotoBoothWordmark(fontSize: 34),
-            SizedBox(height: S.xs),
-            Text(
-              'Little moments, printed beautifully.',
-              textAlign: TextAlign.center,
-              style: AppText.body,
-            ),
-          ],
-        ),
-        // Confetti pinned to the corners of the hero block.
-        const Positioned(
-          left: 0,
-          top: 6,
-          child: RetroSparkleDot(size: 20, color: AppColors.popBlue),
-        ),
-        const Positioned(
-          right: 6,
-          top: 0,
-          child: RetroSparkleDot(size: 16, color: AppColors.popPink),
-        ),
-      ],
-    );
-  }
-}
-
-/// The layout choices, side by side so both stay visible without scrolling.
-class _LayoutChoices extends StatelessWidget {
-  const _LayoutChoices({required this.selected, required this.onSelected});
-
-  final PhotoLayout selected;
-  final ValueChanged<PhotoLayout> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        for (final PhotoLayout layout in PhotoLayout.values) ...<Widget>[
-          Expanded(
-            child: LayoutPreview(
-              layout: layout,
-              selected: layout == selected,
-              onTap: () => onSelected(layout),
-            ),
-          ),
-          if (layout != PhotoLayout.values.last)
-            const SizedBox(width: S.sm + S.xs),
-        ],
-      ],
-    );
-  }
-}
-
-/// Prominent primary call to action with a gentle press response.
-class _StartButton extends StatelessWidget {
-  const _StartButton({required this.layout, required this.onPressed});
+class _LayoutCard extends StatelessWidget {
+  const _LayoutCard({
+    required this.layout,
+    required this.selected,
+    required this.onTap,
+  });
 
   final PhotoLayout layout;
-  final VoidCallback onPressed;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return PressableScale(
-      child: Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          borderRadius: R.pillRadius,
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: AppColors.accent.withValues(alpha: 0.45),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? AppColors.popPink : AppColors.line,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: <Widget>[
+            Expanded(
+              child: _GridThumbnail(layout: layout),
             ),
+            const SizedBox(height: 2),
+            Text(layout.label, style: AppText.overline.copyWith(fontSize: 9)),
           ],
         ),
-        child: FilledButton.icon(
-          onPressed: onPressed,
-          style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(58),
-            textStyle: AppText.button.copyWith(fontSize: 17),
-          ),
-          icon: const Icon(Icons.auto_awesome_rounded, size: 22),
-          label: const Text('Start Photo Booth'),
-        ),
       ),
+    );
+  }
+}
+
+class _GridThumbnail extends StatelessWidget {
+  const _GridThumbnail({required this.layout});
+
+  final PhotoLayout layout;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: layout.cols,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 2,
+      crossAxisSpacing: 2,
+      children: List<int>.generate(layout.photoCount, (int i) => i).map((_) {
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.surfaceMuted,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        );
+      }).toList(),
     );
   }
 }

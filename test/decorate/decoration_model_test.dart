@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:photo_booth/features/decorate/decoration_model.dart';
@@ -96,13 +95,13 @@ void main() {
       final updated = state.copyWith(
         stickers: const [
           StickerPlacement(type: StickerType.star, x: 0.2, y: 0.3),
-          StickerPlacement(type: StickerType.smile, x: 0.8, y: 0.7),
+          StickerPlacement(type: StickerType.smiley, x: 0.8, y: 0.7),
         ],
       );
 
       expect(updated.stickers, hasLength(2));
       expect(updated.stickers[0].type, equals(StickerType.star));
-      expect(updated.stickers[1].type, equals(StickerType.smile));
+      expect(updated.stickers[1].type, equals(StickerType.smiley));
     });
   });
 
@@ -183,12 +182,6 @@ void main() {
   });
 
   group('StickerType', () {
-    test('provides an icon for every type', () {
-      for (final type in StickerType.values) {
-        expect(type.icon, isNotNull);
-      }
-    });
-
     test('provides a non-empty label for every type', () {
       for (final type in StickerType.values) {
         expect(type.label, isNotEmpty);
@@ -198,14 +191,6 @@ void main() {
     test('labels are unique', () {
       final labels = StickerType.values.map((t) => t.label).toSet();
       expect(labels, hasLength(StickerType.values.length));
-    });
-
-    test('heart icon is Icons.favorite', () {
-      expect(StickerType.heart.icon, equals(Icons.favorite));
-    });
-
-    test('star icon is Icons.star', () {
-      expect(StickerType.star.icon, equals(Icons.star));
     });
   });
 }

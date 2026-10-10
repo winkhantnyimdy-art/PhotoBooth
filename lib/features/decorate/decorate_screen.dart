@@ -4,34 +4,24 @@ import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/art/bubble_logo.dart';
+import '../../core/art/checkerboard.dart';
+import '../../core/art/retro_sticker.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
-import '../../shared/app_surface.dart';
 import '../../shared/pressable.dart';
 import '../export/export_screen.dart';
 import '../home/layout_geometry.dart';
 import '../home/layout_model.dart';
 import 'decoration_model.dart';
 
-/// Decoration screen for a completed PhotoBooth session.
-///
-/// Presents a live preview of the finished composition above compact controls
-/// for frame, style, stickers and the date. The preview is laid out from
-/// [PhotoStripGeometry] — the same geometry the exporter uses — including the
-/// sticker coordinate mapping, so what is styled here is what gets rendered.
-///
-/// No new decoration capability is introduced: the same frames, styles, sticker
-/// types and date toggle are offered as before.
 class DecorateScreen extends StatefulWidget {
   const DecorateScreen({super.key, required this.layout, required this.photos});
 
-  /// The layout that was used for this session.
   final PhotoLayout layout;
-
-  /// Captured photos in order (first = shot 1, etc.).
   final List<XFile> photos;
 
   @override
@@ -41,6 +31,7 @@ class DecorateScreen extends StatefulWidget {
 class _DecorateScreenState extends State<DecorateScreen> {
   late DecorationState _decorationState;
   StickerType? _selectedStickerType;
+  int _selectedTab = 2;
 
   @override
   void initState() {
@@ -52,7 +43,89 @@ class _DecorateScreenState extends State<DecorateScreen> {
     );
   }
 
-  /// Live composition preview, constrained to the exporter's true proportions.
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          children: <Widget>[
+            _buildTopBar(),
+            Expanded(
+              child: Column(
+                children: <Widget>[
+                  Expanded(
+                    flex: 5,
+                    child: Padding(
+                      padding: const EdgeInsets.all(S.sm),
+                      child: _buildCompositionPreview(),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 4,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(24),
+                        ),
+                      ),
+                      child: Column(
+                        children: <Widget>[
+                          _buildTabBar(),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.all(S.sm),
+                              child: _buildTabContent(),
+                            ),
+                          ),
+                          _buildDoneButton(context),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const CheckerboardPattern(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.sm),
+      child: Row(
+        children: <Widget>[
+          _CircleButton(
+            icon: Icons.arrow_back_rounded,
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          Expanded(
+            child: Center(
+              child: Text('Decorate', style: AppText.title),
+            ),
+          ),
+          PressableScale(
+            child: OutlinedButton.icon(
+              onPressed: _resetDecoration,
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Reset'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.popNavy,
+                side: const BorderSide(color: AppColors.popNavy, width: 1.5),
+                shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+                padding: const EdgeInsets.symmetric(horizontal: S.md),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCompositionPreview() {
     final double stripAspect = PhotoStripGeometry.aspectRatio(widget.layout);
     return Center(
@@ -67,201 +140,168 @@ class _DecorateScreenState extends State<DecorateScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Screen
-  // ---------------------------------------------------------------------------
+  Widget _buildTabBar() {
+    const List<String> tabs = <String>['Frames', 'Effects', 'Stickers', 'Date'];
+    const List<IconData> icons = <IconData>[
+      Icons.crop_square_rounded,
+      Icons.auto_awesome_rounded,
+      Icons.emoji_emotions_rounded,
+      Icons.calendar_today_rounded,
+    ];
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Decorate'),
-        automaticallyImplyLeading: true,
-      ),
-      body: SafeArea(
-        child: Column(
-          children: <Widget>[
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(S.md, S.sm, S.md, 0),
+      child: Row(
+        children: <Widget>[
+          for (int i = 0; i < tabs.length; i++)
             Expanded(
-              flex: 5,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(S.md, S.xs, S.md, S.md),
-                child: _buildCompositionPreview(),
-              ),
-            ),
-            Expanded(
-              flex: 4,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(R.lg),
-                  ),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: Color(0x14302B30),
-                      blurRadius: 26,
-                      offset: Offset(0, -10),
-                    ),
-                  ],
-                ),
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    S.md,
-                    S.md,
-                    S.md,
-                    S.md + MediaQuery.paddingOf(context).bottom,
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedTab = i),
+                child: AnimatedContainer(
+                  duration: AppMotion.of(context, AppMotion.fast),
+                  padding: const EdgeInsets.symmetric(vertical: S.sm),
+                  decoration: BoxDecoration(
+                    color: _selectedTab == i
+                        ? AppColors.hotPink
+                        : Colors.transparent,
+                    borderRadius: R.pillRadius,
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
-                      _buildFrameSection(),
-                      const SizedBox(height: S.md),
-                      _buildStyleSection(),
-                      const SizedBox(height: S.md),
-                      _buildStickerSection(),
-                      const SizedBox(height: S.md),
-                      _buildDateSection(),
-                      const SizedBox(height: S.md),
-                      _buildDoneButton(context),
+                      Icon(
+                        icons[i],
+                        size: 18,
+                        color: _selectedTab == i
+                            ? AppColors.onAccent
+                            : AppColors.textSecondary,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        tabs[i],
+                        style: AppText.caption.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: _selectedTab == i
+                              ? AppColors.onAccent
+                              : AppColors.textSecondary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Sections
-  // ---------------------------------------------------------------------------
+  Widget _buildTabContent() {
+    switch (_selectedTab) {
+      case 0:
+        return _buildFramesTab();
+      case 1:
+        return _buildEffectsTab();
+      case 2:
+        return _buildStickersTab();
+      case 3:
+        return _buildDateTab();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
 
-  Widget _buildFrameSection() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      const SectionLabel('Frame'),
-      const SizedBox(height: S.sm),
-      Wrap(
-        spacing: S.sm + S.xs,
-        runSpacing: S.sm + S.xs,
-        children: <Widget>[
-          for (final BackgroundChoice choice in BackgroundChoice.values)
-            _FrameSwatch(
-              choice: choice,
-              selected: _decorationState.background == choice,
-              onTap: () => setState(() {
-                _decorationState = _decorationState.copyWith(
-                  background: choice,
-                );
-              }),
-            ),
-        ],
-      ),
-    ],
-  );
-
-  Widget _buildStyleSection() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      const SectionLabel('Style'),
-      const SizedBox(height: S.sm),
-      Wrap(
-        spacing: S.sm,
-        runSpacing: S.sm,
-        children: <Widget>[
-          for (final DecorativeStyle style in DecorativeStyle.values)
-            ChoiceChip(
-              avatar: Icon(
-                _styleIcon(style),
-                size: 17,
-                color: _decorationState.style == style
-                    ? AppColors.onAccent
-                    : AppColors.textSecondary,
-              ),
-              label: Text(style.label),
-              selected: _decorationState.style == style,
-              onSelected: (_) => setState(() {
-                _decorationState = _decorationState.copyWith(style: style);
-              }),
-            ),
-        ],
-      ),
-    ],
-  );
-
-  Widget _buildStickerSection() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      const SectionLabel('Stickers'),
-      const SizedBox(height: S.sm),
-      Wrap(
-        spacing: S.sm,
-        runSpacing: S.sm,
-        children: <Widget>[
-          for (final StickerType type in StickerType.values)
-            _StickerChip(
-              type: type,
-              selected: _selectedStickerType == type,
-              onTap: () => setState(() {
-                _selectedStickerType = _selectedStickerType == type
-                    ? null
-                    : type;
-              }),
-            ),
-        ],
-      ),
-      if (_selectedStickerType != null) ...<Widget>[
-        const SizedBox(height: S.sm + S.xs),
-        PressableScale(
-          child: FilledButton.icon(
-            onPressed: _addSelectedSticker,
-            icon: const Icon(Icons.add_rounded, size: 20),
-            label: Text('Add ${_selectedStickerType!.label}'),
+  Widget _buildFramesTab() {
+    return Wrap(
+      spacing: S.sm,
+      runSpacing: S.sm,
+      children: <Widget>[
+        for (final BackgroundChoice choice in BackgroundChoice.values)
+          _FrameSwatch(
+            choice: choice,
+            selected: _decorationState.background == choice,
+            onTap: () => setState(() {
+              _decorationState = _decorationState.copyWith(
+                background: choice,
+              );
+            }),
           ),
-        ),
       ],
-      if (_decorationState.stickers.isNotEmpty) ...<Widget>[
-        const SizedBox(height: S.sm + S.xs),
-        Row(
+    );
+  }
+
+  Widget _buildEffectsTab() {
+    return Wrap(
+      spacing: S.sm,
+      runSpacing: S.sm,
+      children: <Widget>[
+        for (final DecorativeStyle style in DecorativeStyle.values)
+          ChoiceChip(
+            label: Text(style.label),
+            selected: _decorationState.style == style,
+            onSelected: (_) => setState(() {
+              _decorationState = _decorationState.copyWith(style: style);
+            }),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildStickersTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        GridView.count(
+          crossAxisCount: 5,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: S.sm,
+          crossAxisSpacing: S.sm,
           children: <Widget>[
-            const Icon(
-              Icons.auto_awesome_rounded,
-              size: 15,
-              color: AppColors.accentInk,
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                '${_decorationState.stickers.length} '
-                'sticker${_decorationState.stickers.length == 1 ? '' : 's'} '
-                'added',
-                style: AppText.caption,
+            for (final StickerType type in StickerType.values)
+              _StickerChip(
+                type: type,
+                selected: _selectedStickerType == type,
+                onTap: () => setState(() {
+                  _selectedStickerType = _selectedStickerType == type
+                      ? null
+                      : type;
+                }),
               ),
-            ),
-            TextButton.icon(
-              onPressed: _removeLastSticker,
-              icon: const Icon(Icons.undo_rounded, size: 18),
-              label: const Text('Remove last'),
-            ),
           ],
         ),
+        if (_selectedStickerType != null) ...<Widget>[
+          const SizedBox(height: S.md),
+          PressableScale(
+            child: FilledButton.icon(
+              onPressed: _addSelectedSticker,
+              icon: const Icon(Icons.add_rounded, size: 20),
+              label: Text('Add ${_selectedStickerType!.label}'),
+            ),
+          ),
+        ],
+        if (_decorationState.stickers.isNotEmpty) ...<Widget>[
+          const SizedBox(height: S.sm),
+          Row(
+            children: <Widget>[
+              Text(
+                '${_decorationState.stickers.length} sticker${_decorationState.stickers.length == 1 ? '' : 's'} added',
+                style: AppText.caption,
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: _removeLastSticker,
+                child: const Text('Remove last'),
+              ),
+            ],
+          ),
+        ],
       ],
-    ],
-  );
+    );
+  }
 
-  Widget _buildDateSection() => SoftPanel(
-    padding: const EdgeInsets.fromLTRB(S.md, S.sm, S.sm, S.sm),
-    child: Row(
+  Widget _buildDateTab() {
+    return Row(
       children: <Widget>[
-        const Icon(
-          Icons.calendar_today_rounded,
-          size: 18,
-          color: AppColors.accentInk,
-        ),
-        const SizedBox(width: S.sm + S.xs),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -278,15 +318,23 @@ class _DecorateScreenState extends State<DecorateScreen> {
           }),
         ),
       ],
-    ),
-  );
+    );
+  }
 
   Widget _buildDoneButton(BuildContext context) {
-    return PressableScale(
-      child: FilledButton.icon(
-        onPressed: () => _goToExport(context),
-        icon: const Icon(Icons.auto_awesome_rounded, size: 20),
-        label: const Text('Preview & Export'),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(S.md, S.sm, S.md, S.md),
+      child: PressableScale(
+        child: FilledButton.icon(
+          onPressed: () => _goToExport(context),
+          icon: const Icon(Icons.arrow_forward_rounded, size: 20),
+          label: const Text('Finish & Save  →'),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(52),
+            backgroundColor: AppColors.hotPink,
+            shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+          ),
+        ),
       ),
     );
   }
@@ -301,6 +349,17 @@ class _DecorateScreenState extends State<DecorateScreen> {
         ),
       ),
     );
+  }
+
+  void _resetDecoration() {
+    setState(() {
+      _decorationState = DecorationState(
+        layout: widget.layout,
+        background: BackgroundChoice.cream,
+        style: DecorativeStyle.clean,
+      );
+      _selectedStickerType = null;
+    });
   }
 
   void _addSelectedSticker() {
@@ -326,23 +385,8 @@ class _DecorateScreenState extends State<DecorateScreen> {
       );
     });
   }
-
-  static IconData _styleIcon(DecorativeStyle style) {
-    switch (style) {
-      case DecorativeStyle.clean:
-        return Icons.crop_square_rounded;
-      case DecorativeStyle.hearts:
-        return Icons.favorite_rounded;
-      case DecorativeStyle.stars:
-        return Icons.star_rounded;
-      case DecorativeStyle.sparkle:
-        return Icons.auto_awesome_rounded;
-    }
-  }
 }
 
-/// The composition: frame, photo grid, decorative overlay, stickers and the
-/// branding strip, laid out from [PhotoStripGeometry].
 class _Composition extends StatelessWidget {
   const _Composition({
     required this.layout,
@@ -359,14 +403,11 @@ class _Composition extends StatelessWidget {
     final bool onDark = state.background == BackgroundChoice.charcoal;
 
     return ClipRRect(
-      borderRadius: R.all(R.sm),
+      borderRadius: R.all(R.lg),
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
           final double width = constraints.maxWidth;
           final double height = constraints.maxHeight;
-
-          // Uniform scale from export pixels to preview pixels, so every
-          // padding, gutter and cell lands exactly where the exporter puts it.
           final double scale = width / PhotoStripGeometry.exportWidth;
           final double gridHeight =
               PhotoStripGeometry.contentHeight(layout) * scale;
@@ -380,8 +421,8 @@ class _Composition extends StatelessWidget {
               border: Border.all(
                 color: onDark
                     ? AppColors.line
-                    : state.background.color.withValues(alpha: 0.35),
-                width: math.max(1.5, 3 * scale),
+                    : AppColors.popPink,
+                width: math.max(2, 4 * scale),
               ),
             ),
             child: Stack(
@@ -390,12 +431,8 @@ class _Composition extends StatelessWidget {
                   left: pad,
                   right: pad,
                   top: pad,
-                  // The grid occupies the content area only. Without the footer
-                  // term here the photos are centred over the branding strip
-                  // and sit ~75 export pixels too low.
                   bottom: math.max(0, height - gridHeight + pad),
                   child: _PhotoGrid(
-                    key: const ValueKey('composition-grid'),
                     layout: layout,
                     photos: photos,
                     gutter: gutter,
@@ -414,19 +451,13 @@ class _Composition extends StatelessWidget {
                           : AppColors.accentDeep.withValues(alpha: 0.12),
                     ),
                   ),
-                // Stickers map onto the grid area only, exactly as the exporter
-                // does, so preview and export agree. The exporter draws its
-                // glyphs centred on that point at a fixed size in export
-                // pixels, so the preview matches both.
                 for (final StickerPlacement sticker in state.stickers)
                   Positioned(
                     left: sticker.x * width - (stickerSize / 2),
                     top: sticker.y * gridHeight - (stickerSize / 2),
-                    child: Icon(
-                      sticker.type.icon,
+                    child: RetroSticker(
+                      type: sticker.type,
                       size: stickerSize,
-                      color: onDark ? AppColors.onDark : AppColors.accentDeep,
-                      semanticLabel: sticker.type.label,
                     ),
                   ),
                 Positioned(
@@ -435,7 +466,6 @@ class _Composition extends StatelessWidget {
                   bottom: 0,
                   height: math.max(0, height - gridHeight),
                   child: _BrandingStrip(
-                    key: const ValueKey('composition-footer'),
                     state: state,
                     onDark: onDark,
                   ),
@@ -449,10 +479,8 @@ class _Composition extends StatelessWidget {
   }
 }
 
-/// Photo grid drawn from the shared geometry.
 class _PhotoGrid extends StatelessWidget {
   const _PhotoGrid({
-    super.key,
     required this.layout,
     required this.photos,
     required this.gutter,
@@ -460,8 +488,6 @@ class _PhotoGrid extends StatelessWidget {
 
   final PhotoLayout layout;
   final List<XFile> photos;
-
-  /// Gutter already scaled from export pixels to preview pixels.
   final double gutter;
 
   @override
@@ -492,7 +518,6 @@ class _PhotoGrid extends StatelessWidget {
   }
 }
 
-/// Tonal decorative overlay for the chosen style.
 class _StyleOverlay extends StatelessWidget {
   const _StyleOverlay({required this.style, required this.color});
 
@@ -510,7 +535,6 @@ class _StyleOverlay extends StatelessWidget {
   }
 }
 
-/// Repeating ornamental pattern, mirroring the exporter's overlay.
 class _OverlayPainter extends CustomPainter {
   const _OverlayPainter({required this.style, required this.color});
 
@@ -601,9 +625,8 @@ class _OverlayPainter extends CustomPainter {
       old.style != style || old.color != color;
 }
 
-/// Branding footer inside the composition preview.
 class _BrandingStrip extends StatelessWidget {
-  const _BrandingStrip({super.key, required this.state, required this.onDark});
+  const _BrandingStrip({required this.state, required this.onDark});
 
   final DecorationState state;
   final bool onDark;
@@ -618,40 +641,31 @@ class _BrandingStrip extends StatelessWidget {
         ),
       ),
       child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: S.xs),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            SizedBox(
+              width: 80,
+              child: PhotoBoothBubbleLogo(width: 80),
+            ),
+            if (state.showDate) ...<Widget>[
+              const SizedBox(height: 2),
               Text(
-                'PHOTOBOOTH',
+                formatExportDate(state.displayDate),
                 style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.6,
-                  color: foreground,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  color: foreground.withValues(alpha: 0.75),
                 ),
               ),
-              if (state.showDate) ...<Widget>[
-                const SizedBox(height: 1),
-                Text(
-                  formatExportDate(state.displayDate),
-                  style: TextStyle(
-                    fontSize: 8.5,
-                    fontWeight: FontWeight.w500,
-                    color: foreground.withValues(alpha: 0.75),
-                  ),
-                ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// A single colour frame option.
 class _FrameSwatch extends StatelessWidget {
   const _FrameSwatch({
     required this.choice,
@@ -669,36 +683,30 @@ class _FrameSwatch extends StatelessWidget {
       button: true,
       selected: selected,
       label: '${choice.label} frame',
-      child: ExcludeSemantics(
-        child: GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: AppMotion.of(context, AppMotion.fast),
-            width: S.touchTarget,
-            height: S.touchTarget,
-            padding: const EdgeInsets.all(5),
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: AppMotion.of(context, AppMotion.fast),
+          width: S.touchTarget,
+          height: S.touchTarget,
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: R.all(R.md),
+            border: Border.all(
+              color: selected ? AppColors.hotPink : AppColors.line,
+              width: selected ? 2.5 : 1,
+            ),
+          ),
+          child: DecoratedBox(
             decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: R.all(R.md),
-              border: Border.all(
-                color: selected ? AppColors.accent : AppColors.line,
-                width: selected ? 2 : 1,
-              ),
+              color: choice.color,
+              borderRadius: R.all(R.sm),
+              border: Border.all(color: AppColors.line),
             ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: choice.color,
-                borderRadius: R.all(R.sm),
-                border: Border.all(color: AppColors.line),
-              ),
-              child: selected
-                  ? const Icon(
-                      Icons.check_rounded,
-                      size: 18,
-                      color: AppColors.accentInk,
-                    )
-                  : null,
-            ),
+            child: selected
+                ? const Icon(Icons.check_rounded, size: 18, color: AppColors.popInk)
+                : null,
           ),
         ),
       ),
@@ -706,7 +714,6 @@ class _FrameSwatch extends StatelessWidget {
   }
 }
 
-/// Icon-only sticker picker with a comfortable touch target.
 class _StickerChip extends StatelessWidget {
   const _StickerChip({
     required this.type,
@@ -723,30 +730,49 @@ class _StickerChip extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      // Suffixed because a style and a sticker can share a name
-      // (e.g. "Sparkle"), which would otherwise be ambiguous when read aloud.
       label: '${type.label} sticker',
-      child: ExcludeSemantics(
-        child: GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: AppMotion.of(context, AppMotion.fast),
-            width: S.touchTarget,
-            height: S.touchTarget,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected ? AppColors.accent : AppColors.surface,
-              borderRadius: R.all(R.md),
-              border: Border.all(
-                color: selected ? AppColors.accent : AppColors.line,
-                width: selected ? 2 : 1,
-              ),
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: AppMotion.of(context, AppMotion.fast),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.hotPink.withValues(alpha: 0.15) : AppColors.surface,
+            borderRadius: R.all(R.md),
+            border: Border.all(
+              color: selected ? AppColors.hotPink : AppColors.line,
+              width: selected ? 2 : 1,
             ),
-            child: Icon(
-              type.icon,
-              size: 21,
-              color: selected ? AppColors.onAccent : AppColors.textSecondary,
-            ),
+          ),
+          child: Center(
+            child: RetroSticker(type: type, size: 28),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CircleButton extends StatelessWidget {
+  const _CircleButton({required this.icon, this.onPressed});
+
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool enabled = onPressed != null;
+    return Material(
+      color: enabled ? AppColors.surface : AppColors.surfaceMuted,
+      shape: const CircleBorder(side: BorderSide(color: AppColors.line)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(
+            icon,
+            size: 22,
+            color: enabled ? AppColors.popNavy : AppColors.textMuted,
           ),
         ),
       ),

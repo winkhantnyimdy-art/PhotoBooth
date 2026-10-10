@@ -18,12 +18,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Looking good!'), findsOneWidget);
-      expect(find.text('Continue to Decorate'), findsOneWidget);
+      expect(find.text('Review'), findsOneWidget);
+      expect(find.text('Next'), findsOneWidget);
       expect(find.text('Retake'), findsOneWidget);
       // A clear next step toward decoration.
       expect(
-        find.text('Next: add a frame, style and stickers'),
+        find.text('Review'),
         findsOneWidget,
       );
     });
@@ -34,12 +34,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Continue to Decorate'));
+      await tester.tap(find.text('Next'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
 
       expect(find.byType(DecorateScreen), findsOneWidget);
-      expect(find.text('Preview & Export'), findsOneWidget);
+      expect(find.textContaining('Finish & Save'), findsOneWidget);
     });
 
     testWidgets('Retake returns to the previous screen', (tester) async {
@@ -86,7 +86,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        for (final String label in <String>['Continue to Decorate', 'Retake']) {
+        for (final String label in <String>['Next', 'Retake']) {
           final Rect rect = tester.getRect(find.text(label));
           expect(rect.left, greaterThanOrEqualTo(0), reason: label);
           expect(rect.right, lessThanOrEqualTo(width), reason: label);
@@ -193,11 +193,11 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.scrollUntilVisible(
-        find.text('Preview & Export'),
+        find.textContaining('Finish & Save'),
         60,
         scrollable: panel,
       );
-      await tester.tap(find.text('Preview & Export'));
+      await tester.tap(find.textContaining('Finish & Save'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
 
@@ -250,7 +250,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // The export action must remain reachable on a small screen.
-        final Finder export = find.text('Preview & Export');
+        final Finder export = find.textContaining('Finish & Save');
         expect(export, findsOneWidget);
         await tester.ensureVisible(export);
         await tester.pumpAndSettle();

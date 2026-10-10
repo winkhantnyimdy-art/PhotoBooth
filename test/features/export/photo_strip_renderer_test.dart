@@ -264,7 +264,7 @@ void main() {
         cleanCream.copyWith(
           stickers: const <StickerPlacement>[
             StickerPlacement(type: StickerType.heart, x: 0.5, y: 0.5),
-            StickerPlacement(type: StickerType.smile, x: 0.2, y: 0.8),
+            StickerPlacement(type: StickerType.smiley, x: 0.2, y: 0.8),
           ],
         ),
       );

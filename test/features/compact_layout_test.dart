@@ -60,7 +60,7 @@ void main() {
       await tester.pumpWidget(_app(const HomeScreen()));
       await tester.pumpAndSettle();
 
-      final Finder start = find.text('Start Photo Booth');
+      final Finder start = find.textContaining('Start Photo Booth');
       expect(start, findsOneWidget);
       await tester.ensureVisible(start);
       await tester.pumpAndSettle();
@@ -74,7 +74,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      for (final String label in <String>['Continue to Decorate', 'Retake']) {
+      for (final String label in <String>['Next', 'Retake']) {
         final Finder finder = find.text(label);
         expect(finder, findsOneWidget, reason: label);
         final Rect rect = tester.getRect(finder);
@@ -91,7 +91,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final Finder export = find.text('Preview & Export');
+      final Finder export = find.textContaining('Finish & Save');
       expect(export, findsOneWidget);
       await tester.scrollUntilVisible(
         export,
@@ -166,9 +166,9 @@ void main() {
       );
       await _settleRender(tester);
 
-      expect(find.text('Your photos are ready!'), findsOneWidget);
+      expect(find.text('Ready!'), findsOneWidget);
       expect(find.textContaining('Saved as'), findsNothing);
-      expect(find.textContaining('ready to save or share'), findsOneWidget);
+      expect(find.textContaining('Save or share it'), findsOneWidget);
     });
 
     testWidgets('Export drops the subtitle on a short screen', (tester) async {
@@ -187,8 +187,8 @@ void main() {
       );
       await _settleRender(tester);
 
-      expect(find.text('Your photos are ready!'), findsOneWidget);
-      expect(find.textContaining('ready to save or share'), findsNothing);
+      expect(find.text('Ready!'), findsOneWidget);
+      expect(find.textContaining('Save or share it'), findsNothing);
       // The copy must never claim it is saved before the user saves it.
       expect(find.textContaining('Saved as'), findsNothing);
     });
@@ -210,7 +210,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final Finder start = find.text('Start Photo Booth');
+      final Finder start = find.textContaining('Start Photo Booth');
       expect(start, findsOneWidget);
       await tester.ensureVisible(start);
       await tester.pumpAndSettle();

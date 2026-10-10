@@ -130,40 +130,25 @@ class StickerPlacement {
   }
 }
 
-/// Simple sticker types based on built-in icons/emoji.
 enum StickerType {
   heart,
   star,
   sparkle,
+  cherry,
+  bow,
+  smiley,
+  bear,
+  crown,
+  car,
+  rainbow,
+  strawberry,
+  cloud,
   flower,
-  ribbon,
-  smile,
-  speechBubble,
-  cuteSymbol;
+  love,
+  cuteText,
+  hiBubble,
+  bunny;
 
-  /// Returns a display-friendly icon for this sticker type.
-  IconData get icon {
-    switch (this) {
-      case StickerType.heart:
-        return Icons.favorite;
-      case StickerType.star:
-        return Icons.star;
-      case StickerType.sparkle:
-        return Icons.star_border; // Using star_border as sparkle alternative
-      case StickerType.flower:
-        return Icons.nature_people;
-      case StickerType.ribbon:
-        return Icons.card_giftcard;
-      case StickerType.smile:
-        return Icons.sentiment_satisfied;
-      case StickerType.speechBubble:
-        return Icons.chat_bubble_outline;
-      case StickerType.cuteSymbol:
-        return Icons.healing;
-    }
-  }
-
-  /// Returns a simple label for accessibility/debugging.
   String get label {
     switch (this) {
       case StickerType.heart:
@@ -172,16 +157,34 @@ enum StickerType {
         return 'Star';
       case StickerType.sparkle:
         return 'Sparkle';
+      case StickerType.cherry:
+        return 'Cherry';
+      case StickerType.bow:
+        return 'Bow';
+      case StickerType.smiley:
+        return 'Smiley';
+      case StickerType.bear:
+        return 'Bear';
+      case StickerType.crown:
+        return 'Crown';
+      case StickerType.car:
+        return 'Car';
+      case StickerType.rainbow:
+        return 'Rainbow';
+      case StickerType.strawberry:
+        return 'Strawberry';
+      case StickerType.cloud:
+        return 'Cloud';
       case StickerType.flower:
         return 'Flower';
-      case StickerType.ribbon:
-        return 'Ribbon';
-      case StickerType.smile:
-        return 'Smile';
-      case StickerType.speechBubble:
-        return 'Speech Bubble';
-      case StickerType.cuteSymbol:
-        return 'Cute Symbol';
+      case StickerType.love:
+        return 'Love';
+      case StickerType.cuteText:
+        return 'Cute!';
+      case StickerType.hiBubble:
+        return 'Hi!';
+      case StickerType.bunny:
+        return 'Bunny';
     }
   }
 }

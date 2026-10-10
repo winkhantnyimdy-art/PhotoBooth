@@ -84,7 +84,7 @@ void main() {
         await _settleRender(tester);
 
         // The header reads as a finished keepsake, not a technical dump.
-        expect(find.text('Your photos are ready!'), findsOneWidget);
+        expect(find.text('Ready!'), findsOneWidget);
         // The old technical label must not come back.
         expect(find.textContaining('Layout:'), findsNothing);
 

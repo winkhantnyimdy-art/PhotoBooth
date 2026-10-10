@@ -166,7 +166,7 @@ void main() {
 
       // And the user landed on Review with the captured photos.
       expect(find.byType(ReviewScreen), findsOneWidget);
-      expect(find.text('Looking good!'), findsOneWidget);
+      expect(find.text('Review'), findsOneWidget);
     });
 
     testWidgets('Retake re-arms the shutter for another session', (
@@ -278,11 +278,11 @@ void main() {
         () => find.byType(ReviewScreen).evaluate().isNotEmpty,
       );
 
-      await tester.tap(find.text('Continue to Decorate'));
+      await tester.tap(find.text('Next'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
       expect(find.byType(DecorateScreen), findsOneWidget);
-      expect(find.text('Preview & Export'), findsOneWidget);
+      expect(find.textContaining('Finish & Save'), findsOneWidget);
     });
 
     testWidgets('the camera switch control is offered with two cameras', (

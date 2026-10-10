@@ -7,7 +7,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 
-import '../../core/art/retro_artwork.dart';
+import '../../core/art/frame_decorations.dart';
+import '../../core/art/sticker_artwork.dart';
 import '../../core/theme/app_colors.dart';
 import '../home/layout_geometry.dart';
 import '../home/layout_model.dart';
@@ -22,8 +23,8 @@ import '../decorate/decoration_model.dart';
 /// show the same arrangement — and that captured photos are never stretched,
 /// because each photo is decoded into a cell of the strip's own aspect.
 ///
-/// Retro Pop presentation: white paper, a navy dashed border and the same
-/// decal stickers the Decorate preview draws ([RetroArtwork]).
+/// Retro Pop presentation: white paper, a pink polka-dot border and the same
+/// illustrated stickers the Decorate preview draws ([StickerArtwork]).
 class PhotoStripRenderer {
   /// Target export width in pixels.
   static const double exportWidth = PhotoStripGeometry.exportWidth;
@@ -277,7 +278,7 @@ class PhotoStripRenderer {
   // ---------------------------------------------------------------------------
   // Stickers
   //
-  // Drawn with the shared Retro Pop decal artwork so the exported strip and
+  // Drawn with the shared Retro Pop sticker artwork so the exported strip and
   // the live Decorate preview are pixel-identical.
   void _renderSticker(
     ui.Canvas canvas,
@@ -285,46 +286,19 @@ class PhotoStripRenderer {
     ui.Offset center,
     double size,
   ) {
-    RetroArtwork.paintSticker(canvas, type, center, size);
+    StickerArtwork.paintSticker(canvas, type, center, size);
   }
 
-  /// Retro Pop paper edge: a navy dashed inset border, exactly the sticker
-  /// sheet treatment in the reference. Deterministic — the dash pattern is
-  /// fixed, never random.
+  /// Retro Pop paper edge: a pink border with white polka dots, exactly the
+  /// sticker sheet treatment in the reference.
   void _drawDashedFrame(ui.Canvas canvas, ui.Size size, bool onDark) {
-    final double inset = 14;
-    final double thickness = 7;
-    final double dash = 26;
-    final double gap = 18;
-    final ui.Rect frame = ui.Rect.fromLTRB(
-      inset,
-      inset,
-      size.width - inset,
-      size.height - inset,
+    FrameDecorations.paintPolkaDotFrame(
+      canvas,
+      ui.Rect.fromLTWH(0, 0, size.width, size.height),
+      borderWidth: 16,
+      dotSpacing: 28,
+      dotRadius: 5,
     );
-    final ui.Paint paint = ui.Paint()
-      ..isAntiAlias = true
-      ..style = ui.PaintingStyle.stroke
-      ..strokeWidth = thickness
-      ..strokeCap = ui.StrokeCap.round
-      ..color = onDark
-          ? AppColors.popBlue.withValues(alpha: 0.75)
-          : AppColors.popNavy;
-
-    void run(ui.Offset from, ui.Offset to) {
-      final double length = (to - from).distance;
-      if (length <= 0) return;
-      final ui.Offset dir = (to - from) / length;
-      for (double d = 0; d < length; d += dash + gap) {
-        final double end = d + dash < length ? d + dash : length;
-        canvas.drawLine(from + dir * d, from + dir * end, paint);
-      }
-    }
-
-    run(frame.topLeft, frame.topRight);
-    run(frame.topRight, frame.bottomRight);
-    run(frame.bottomRight, frame.bottomLeft);
-    run(frame.bottomLeft, frame.topLeft);
   }
 
 
@@ -332,11 +306,11 @@ class PhotoStripRenderer {
   // Branding footer
   // ---------------------------------------------------------------------------
 
-  /// Retro Pop footer: a coral, white-outlined "PHOTOBOOTH" wordmark centred in
+  /// Retro Pop footer: a bubble-style "PHOTOBOOTH" wordmark centred in
   /// the strip's caption band, with an optional date beneath.
   ///
-  /// The wordmark is drawn twice — a thick white pass then the coral pass — to
-  /// reproduce the decal treatment used on the app's own header logo.
+  /// The wordmark uses the same white-outline + colored-fill treatment as
+  /// the app's header logo.
   void _renderBranding(
     ui.Canvas canvas,
     ui.Rect footer,
@@ -346,7 +320,7 @@ class PhotoStripRenderer {
     final ui.Color ink = onDark ? AppColors.onDark : AppColors.popInk;
 
     final bool hasDate = decorationState.showDate;
-    final double brandFontSize = 34;
+    final double brandFontSize = 36;
     final double dateFontSize = 20;
 
     final TextPainter brand = _textPainter(
@@ -354,7 +328,7 @@ class PhotoStripRenderer {
       TextStyle(
         fontSize: brandFontSize,
         fontWeight: FontWeight.w900,
-        color: AppColors.accent,
+        color: AppColors.bubblePink,
         letterSpacing: 3,
       ),
     );
@@ -374,11 +348,10 @@ class PhotoStripRenderer {
         brand.height + (date == null ? 0 : date.height + 10);
     double top = footer.center.dy - (blockHeight / 2);
 
-    // White halo pass, then the coral wordmark on top.
     final TextPainter halo = _textPainter(
       'PHOTOBOOTH',
       TextStyle(
-        fontSize: brandFontSize,
+        fontSize: brandFontSize * 1.12,
         fontWeight: FontWeight.w900,
         color: AppColors.surface,
         letterSpacing: 3,
@@ -386,7 +359,7 @@ class PhotoStripRenderer {
     );
     halo.paint(
       canvas,
-      Offset(footer.center.dx - halo.width / 2, top - 4),
+      Offset(footer.center.dx - halo.width / 2, top - 3),
     );
     brand.paint(canvas, Offset(footer.center.dx - brand.width / 2, top));
 
