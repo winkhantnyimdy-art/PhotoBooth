@@ -6,7 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 
-import '../../core/art/frame_decorations.dart';
+import '../../core/art/frame_theme_painter.dart';
 import '../../core/art/sticker_artwork.dart';
 import '../../core/art/text_overlay.dart';
 import '../../core/filters/film_grain.dart';
@@ -56,16 +56,14 @@ class PhotoStripRenderer {
     final List<ui.Image> decodedPhotos = <ui.Image>[];
 
     try {
-      // 1. Frame background
-      final ui.Paint bgPaint = ui.Paint()
-        ..color = decorationState.background.color;
-      canvas.drawRect(ui.Rect.fromLTWH(0, 0, exportWidth, height), bgPaint);
-
-      // 2. Paper edge — the chosen frame treatment.
-      FrameDecorations.paintFrame(
+      // 1. Frame background — the chosen premium theme paints paper + border +
+      // wordmark. The same FrameThemePainter runs in the Decorate preview, so
+      // the export is pixel-faithful to what the user saw.
+      FrameThemePainter.paint(
         canvas,
         ui.Rect.fromLTWH(0, 0, exportWidth, height),
-        decorationState.frameStyle,
+        decorationState.frameTheme,
+        wordmarkSize: 36,
       );
 
       // The colour matrix shared by the preview and this export. Identity when
@@ -122,13 +120,16 @@ class PhotoStripRenderer {
 
       // 5. Stickers — normalised coordinates map onto the grid area, matching
       // the Decorate preview exactly. Artwork is shared via StickerArtwork.
+      // Scale and rotation are applied so the export matches the preview.
       for (final sticker in decorationState.stickers) {
-        _renderSticker(
-          canvas,
-          sticker.type,
-          ui.Offset(sticker.x * exportWidth, sticker.y * gridHeight),
-          PhotoStripGeometry.stickerSize,
-        );
+        final double size = PhotoStripGeometry.stickerSize * sticker.scale;
+        final ui.Offset center =
+            ui.Offset(sticker.x * exportWidth, sticker.y * gridHeight);
+        canvas.save();
+        canvas.translate(center.dx, center.dy);
+        canvas.rotate(sticker.rotation);
+        _renderSticker(canvas, sticker.type, ui.Offset.zero, size);
+        canvas.restore();
       }
 
       // 5b. User captions, drawn with the same routine as the live preview.
@@ -395,65 +396,49 @@ class PhotoStripRenderer {
   // Branding footer
   // ---------------------------------------------------------------------------
 
-  /// Retro Pop footer: a bubble-style "PHOTOBOOTH" wordmark centred in
-  /// the strip's caption band, with an optional date beneath.
+  /// Retro Pop footer: the frame theme's wordmark centred in the strip's
+  /// caption band, with an optional date beneath.
   ///
-  /// The wordmark uses the same white-outline + colored-fill treatment as
-  /// the app's header logo.
+  /// The wordmark comes from [FrameThemePainter.paintWordmark] so the export
+  /// and the Decorate preview show the same branding.
   void _renderBranding(
     ui.Canvas canvas,
     ui.Rect footer,
     DecorationState decorationState,
     bool onDark,
   ) {
-    final ui.Color ink = onDark ? AppColors.onDark : AppColors.popInk;
-
     final bool hasDate = decorationState.showDate;
-    final double brandFontSize = 36;
-    final double dateFontSize = 20;
 
-    final TextPainter brand = _textPainter(
-      'PHOTOBOOTH',
-      TextStyle(
-        fontSize: brandFontSize,
-        fontWeight: FontWeight.w900,
-        color: AppColors.bubblePink,
-        letterSpacing: 3,
-      ),
-    );
-    final TextPainter? date = hasDate
-        ? _textPainter(
-            formatExportDate(decorationState.displayDate),
-            TextStyle(
-              fontSize: dateFontSize,
-              fontWeight: FontWeight.w600,
-              color: ink.withValues(alpha: 0.75),
-              letterSpacing: 2,
-            ),
-          )
-        : null;
-
-    final double blockHeight =
-        brand.height + (date == null ? 0 : date.height + 10);
-    double top = footer.center.dy - (blockHeight / 2);
-
-    final TextPainter halo = _textPainter(
-      'PHOTOBOOTH',
-      TextStyle(
-        fontSize: brandFontSize * 1.12,
-        fontWeight: FontWeight.w900,
-        color: AppColors.surface,
-        letterSpacing: 3,
-      ),
-    );
-    halo.paint(
+    // Delegate wordmark painting to the theme painter so the footer matches
+    // the preview exactly.
+    FrameThemePainter.paintWordmark(
       canvas,
-      Offset(footer.center.dx - halo.width / 2, top - 3),
+      footer,
+      decorationState.frameTheme,
+      36,
     );
-    brand.paint(canvas, Offset(footer.center.dx - brand.width / 2, top));
 
-    top += brand.height + 10;
-    date?.paint(canvas, Offset(footer.center.dx - date.width / 2, top));
+    if (hasDate) {
+      final ui.Color ink = onDark ? AppColors.onDark : AppColors.popInk;
+      final double dateFontSize = 20;
+      final TextPainter date = _textPainter(
+        formatExportDate(decorationState.displayDate),
+        TextStyle(
+          fontSize: dateFontSize,
+          fontWeight: FontWeight.w600,
+          color: ink.withValues(alpha: 0.75),
+          letterSpacing: 2,
+        ),
+      );
+      // Position the date just below the wordmark block.
+      date.paint(
+        canvas,
+        Offset(
+          footer.center.dx - date.width / 2,
+          footer.center.dy + 24,
+        ),
+      );
+    }
   }
 
   static TextPainter _textPainter(String text, TextStyle style) {

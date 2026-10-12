@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:photo_booth/features/decorate/decoration_model.dart';
+import 'package:photo_booth/features/decorate/frame_theme.dart';
 import 'package:photo_booth/features/export/photo_strip_renderer.dart';
 import 'package:photo_booth/features/home/layout_geometry.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
@@ -265,13 +266,13 @@ void main() {
       expect(first, orderedEquals(second));
     });
 
-    test('background choice changes the rendered output', () async {
+    test('frame theme paper changes the rendered output', () async {
       final Uint8List cream = await renderWith(cleanCream);
-      final Uint8List charcoal = await renderWith(
-        cleanCream.copyWith(background: BackgroundChoice.charcoal),
+      final Uint8List dark = await renderWith(
+        cleanCream.copyWith(frameTheme: FrameTheme.darkFilm),
       );
 
-      expect(cream, isNot(orderedEquals(charcoal)));
+      expect(cream, isNot(orderedEquals(dark)));
     });
 
     test('decorative style changes the rendered output', () async {

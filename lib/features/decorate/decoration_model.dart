@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/filters/photo_filter.dart';
 import '../home/layout_model.dart';
+import 'frame_theme.dart';
 
 /// Formats the stamped date used by the composition footer.
 ///
@@ -11,6 +12,24 @@ String formatExportDate(DateTime date) =>
     '${date.year}.${_twoDigits(date.month)}.${_twoDigits(date.day)}';
 
 String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+/// Possible undo actions that can be performed on the decoration state.
+enum UndoRedoAction {
+  stickerAdded,
+  stickerRemoved,
+  stickerMoved,
+  stickerScaled,
+  stickerRotated,
+  stickerDuplicated,
+  stickerReordered,
+  textAdded,
+  textRemoved,
+  textEdited,
+  textMoved,
+  filterChanged,
+  adjustmentsReset,
+  frameThemeChanged,
+}
 
 /// The decoration state for a PhotoBooth composition.
 ///
@@ -31,6 +50,7 @@ class DecorationState {
     this.filter = PhotoFilterType.original,
     this.filterIntensity = 1.0,
     this.frameStyle = FrameStyle.polkaDot,
+    this.frameTheme = FrameTheme.retroPop,
     this.adjustments = const PhotoAdjustments(),
     this.dateOverride, // for testability
   });
@@ -62,6 +82,9 @@ class DecorationState {
   /// The paper/border treatment around the strip.
   final FrameStyle frameStyle;
 
+  /// The premium frame theme — a complete visual identity.
+  final FrameTheme frameTheme;
+
   /// Manual brightness/contrast/saturation/warmth tweaks.
   final PhotoAdjustments adjustments;
 
@@ -82,6 +105,7 @@ class DecorationState {
     PhotoFilterType? filter,
     double? filterIntensity,
     FrameStyle? frameStyle,
+    FrameTheme? frameTheme,
     PhotoAdjustments? adjustments,
     DateTime? dateOverride,
   }) {
@@ -95,6 +119,7 @@ class DecorationState {
       filter: filter ?? this.filter,
       filterIntensity: filterIntensity ?? this.filterIntensity,
       frameStyle: frameStyle ?? this.frameStyle,
+      frameTheme: frameTheme ?? this.frameTheme,
       adjustments: adjustments ?? this.adjustments,
       dateOverride: dateOverride ?? this.dateOverride,
     );
@@ -146,12 +171,15 @@ enum DecorativeStyle {
 /// A user-placed sticker in the composition.
 ///
 /// Uses normalized coordinates (0.0-1.0) relative to the composition
-/// bounds so positions are device-independent.
+/// bounds so positions are device-independent. [scale] and [rotation] allow
+/// pinch-resize and rotation gestures.
 class StickerPlacement {
   const StickerPlacement({
     required this.type,
     required this.x,
     required this.y,
+    this.scale = 1.0,
+    this.rotation = 0.0,
   });
 
   /// The type of sticker (emoji/icon-based).
@@ -163,14 +191,40 @@ class StickerPlacement {
   /// Vertical position (0.0 = top, 1.0 = bottom).
   final double y;
 
+  /// Size multiplier (1.0 = default, 0.5 = half, 2.0 = double).
+  final double scale;
+
+  /// Rotation in radians.
+  final double rotation;
+
   /// Creates a copy with the given fields replaced.
-  StickerPlacement copyWith({StickerType? type, double? x, double? y}) {
+  StickerPlacement copyWith({
+    StickerType? type,
+    double? x,
+    double? y,
+    double? scale,
+    double? rotation,
+  }) {
     return StickerPlacement(
       type: type ?? this.type,
       x: x ?? this.x,
       y: y ?? this.y,
+      scale: scale ?? this.scale,
+      rotation: rotation ?? this.rotation,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      other is StickerPlacement &&
+      other.type == type &&
+      other.x == x &&
+      other.y == y &&
+      other.scale == scale &&
+      other.rotation == rotation;
+
+  @override
+  int get hashCode => Object.hash(type, x, y, scale, rotation);
 }
 
 /// A free-text caption placed on the strip.
@@ -289,5 +343,64 @@ enum StickerType {
       case StickerType.bunny:
         return 'Bunny';
     }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Undo/Redo
+// -----------------------------------------------------------------------------
+
+/// Manages undo and redo for decoration edits.
+///
+/// Every sticker/text action pushes the *previous* state onto the undo stack,
+/// so undo restores exactly what the user had before the action. Redo stores
+/// the state that was undone, allowing the user to step forward again.
+///
+/// The stacks are capped at 30 entries to bound memory on long editing
+/// sessions.
+class UndoRedoDecoration {
+  UndoRedoDecoration({this.capacity = 30});
+
+  final int capacity;
+  final List<DecorationState> _undoStack = <DecorationState>[];
+  final List<DecorationState> _redoStack = <DecorationState>[];
+
+  /// Whether there is an action available to undo.
+  bool get canUndo => _undoStack.isNotEmpty;
+
+  /// Whether there is an action available to redo.
+  bool get canRedo => _redoStack.isNotEmpty;
+
+  /// Records a new state, pushing the previous one onto the undo stack.
+  ///
+  /// Call this *before* applying the edit to [next]. The [previous] state is
+  /// what undo will restore.
+  void record(DecorationState previous) {
+    _undoStack.add(previous);
+    if (_undoStack.length > capacity) {
+      _undoStack.removeAt(0);
+    }
+    // Any new action invalidates the redo history.
+    _redoStack.clear();
+  }
+
+  /// Returns the state to restore when undoing, or null if nothing to undo.
+  DecorationState? undo(DecorationState current) {
+    if (_undoStack.isEmpty) return null;
+    _redoStack.add(current);
+    return _undoStack.removeLast();
+  }
+
+  /// Returns the state to restore when redoing, or null if nothing to redo.
+  DecorationState? redo(DecorationState current) {
+    if (_redoStack.isEmpty) return null;
+    _undoStack.add(current);
+    return _redoStack.removeLast();
+  }
+
+  /// Clears both stacks (e.g. when starting a new composition).
+  void clear() {
+    _undoStack.clear();
+    _redoStack.clear();
   }
 }

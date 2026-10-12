@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/art/frame_decorations.dart';
+import '../../core/art/frame_theme_painter.dart';
 import '../../core/art/retro_sticker.dart';
 import '../../core/art/text_overlay.dart';
 import '../../core/filters/film_grain.dart';
@@ -19,6 +19,7 @@ import '../export/export_screen.dart';
 import '../home/layout_geometry.dart';
 import '../home/layout_model.dart';
 import 'decoration_model.dart';
+import 'frame_theme.dart';
 
 /// The Decorate editor: a dark workspace with the live composition on top and a
 /// compact five-tab tool tray below (Filters, Frames, Stickers, Text, Adjust).
@@ -53,6 +54,9 @@ class _DecorateScreenState extends State<DecorateScreen> {
   ];
 
   late DecorationState _state;
+
+  /// Undo/redo history for decoration edits.
+  final UndoRedoDecoration _undoRedo = UndoRedoDecoration();
 
   /// The layout currently being composed.
   ///
@@ -139,6 +143,14 @@ class _DecorateScreenState extends State<DecorateScreen> {
                 icon: Icons.arrow_back_rounded,
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
+              _DarkCircleButton(
+                icon: Icons.undo_rounded,
+                onPressed: _undoRedo.canUndo ? _undo : null,
+              ),
+              _DarkCircleButton(
+                icon: Icons.redo_rounded,
+                onPressed: _undoRedo.canRedo ? _redo : null,
+              ),
               Expanded(
                 child: Center(
                   child: Text(
@@ -206,17 +218,42 @@ class _DecorateScreenState extends State<DecorateScreen> {
         color: AppColors.darkElevated,
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
-      child: Column(
-        children: <Widget>[
-          _buildTabBar(),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(S.md, S.sm, S.md, S.sm),
-              child: _buildTabContent(),
-            ),
-          ),
-          _buildDoneButton(context),
-        ],
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          // On very short screens the tab bar + done button can exceed the
+          // available height. In that case, make the whole tray scrollable
+          // so every control stays reachable.
+          final double minTabBarHeight = 48;
+          final double minDoneButtonHeight = 68;
+          final double minContentHeight = 80;
+          final double totalMin = minTabBarHeight + minContentHeight + minDoneButtonHeight;
+
+          if (constraints.maxHeight < totalMin) {
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  _buildTabBar(),
+                  _buildTabContent(),
+                  _buildDoneButton(context),
+                ],
+              ),
+            );
+          }
+
+          return Column(
+            children: <Widget>[
+              _buildTabBar(),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(S.md, S.sm, S.md, S.sm),
+                  child: _buildTabContent(),
+                ),
+              ),
+              _buildDoneButton(context),
+            ],
+          );
+        },
       ),
     );
   }
@@ -397,6 +434,22 @@ class _DecorateScreenState extends State<DecorateScreen> {
           ],
         ),
         const SizedBox(height: S.md),
+        const _SectionHeader(title: 'Frame theme'),
+        const SizedBox(height: S.sm),
+        Wrap(
+          spacing: S.sm,
+          runSpacing: S.sm,
+          children: <Widget>[
+            for (final FrameTheme theme in FrameTheme.values)
+              _ChoicePill(
+                label: theme.label,
+                semanticLabel: '${theme.label} frame theme',
+                selected: _state.frameTheme == theme,
+                onTap: () => _changeFrameTheme(theme),
+              ),
+          ],
+        ),
+        const SizedBox(height: S.md),
         const _SectionHeader(title: 'Pattern'),
         const SizedBox(height: S.sm),
         Wrap(
@@ -500,6 +553,20 @@ class _DecorateScreenState extends State<DecorateScreen> {
               ),
             ],
           ),
+          if (_selectedSticker != null) ...<Widget>[
+            const SizedBox(height: S.sm),
+            _StickerControls(
+              sticker: _state.stickers[_selectedSticker!],
+              canMoveUp: _selectedSticker! > 0,
+              canMoveDown: _selectedSticker! < _state.stickers.length - 1,
+              onScale: (double f) => _scaleSticker(_selectedSticker!, f),
+              onRotate: (double a) => _rotateSticker(_selectedSticker!, a),
+              onDuplicate: () => _duplicateSticker(_selectedSticker!),
+              onDelete: () => _removeSticker(_selectedSticker!),
+              onMoveUp: () => _reorderSticker(_selectedSticker!, _selectedSticker! - 1),
+              onMoveDown: () => _reorderSticker(_selectedSticker!, _selectedSticker! + 2),
+            ),
+          ],
           Text(
             'Drag stickers directly on the preview. Tap one to select it.',
             style: AppText.caption.copyWith(color: AppColors.darkMuted),
@@ -705,6 +772,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
   }
 
   void _resetDecoration() {
+    _undoRedo.record(_state);
     setState(() {
       _state = DecorationState(
         layout: _layout,
@@ -717,15 +785,23 @@ class _DecorateScreenState extends State<DecorateScreen> {
     });
   }
 
+  void _changeFrameTheme(FrameTheme theme) {
+    if (_state.frameTheme == theme) return;
+    _undoRedo.record(_state);
+    setState(() {
+      _state = _state.copyWith(frameTheme: theme);
+    });
+  }
+
   void _addSelectedSticker() {
     final StickerType? type = _pendingSticker;
     if (type == null) return;
+    _undoRedo.record(_state);
     setState(() {
       _state = _state.copyWith(
         stickers: <StickerPlacement>[
           ..._state.stickers,
-          const StickerPlacement(type: StickerType.heart, x: 0.5, y: 0.5)
-              .copyWith(type: type),
+          StickerPlacement(type: type, x: 0.5, y: 0.5),
         ],
       );
       _pendingSticker = null;
@@ -733,21 +809,26 @@ class _DecorateScreenState extends State<DecorateScreen> {
     });
   }
 
+  void _removeSticker(int index) {
+    if (index < 0 || index >= _state.stickers.length) return;
+    _undoRedo.record(_state);
+    setState(() {
+      final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers)
+        ..removeAt(index);
+      _state = _state.copyWith(stickers: list);
+      if (_selectedSticker == index) _selectedSticker = null;
+    });
+  }
+
   void _removeLastSticker() {
     if (_state.stickers.isEmpty) return;
-    setState(() {
-      final List<StickerPlacement> list =
-          List<StickerPlacement>.from(_state.stickers)..removeLast();
-      _state = _state.copyWith(stickers: list);
-      _selectedSticker = null;
-    });
+    _removeSticker(_state.stickers.length - 1);
   }
 
   void _moveSticker(int index, Offset delta, Size area) {
     if (index < 0 || index >= _state.stickers.length) return;
     final StickerPlacement s = _state.stickers[index];
-    final List<StickerPlacement> list =
-        List<StickerPlacement>.from(_state.stickers);
+    final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers);
     list[index] = s.copyWith(
       x: (s.x + delta.dx / area.width).clamp(0.0, 1.0),
       y: (s.y + delta.dy / area.height).clamp(0.0, 1.0),
@@ -757,10 +838,88 @@ class _DecorateScreenState extends State<DecorateScreen> {
     });
   }
 
+  void _scaleSticker(int index, double factor) {
+    if (index < 0 || index >= _state.stickers.length) return;
+    _undoRedo.record(_state);
+    setState(() {
+      final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers);
+      final StickerPlacement s = list[index];
+      list[index] = s.copyWith(scale: (s.scale * factor).clamp(0.3, 3.0));
+      _state = _state.copyWith(stickers: list);
+    });
+  }
+
+  void _rotateSticker(int index, double angle) {
+    if (index < 0 || index >= _state.stickers.length) return;
+    _undoRedo.record(_state);
+    setState(() {
+      final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers);
+      final StickerPlacement s = list[index];
+      list[index] = s.copyWith(rotation: s.rotation + angle);
+      _state = _state.copyWith(stickers: list);
+    });
+  }
+
+  void _duplicateSticker(int index) {
+    if (index < 0 || index >= _state.stickers.length) return;
+    _undoRedo.record(_state);
+    setState(() {
+      final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers);
+      final StickerPlacement original = list[index];
+      // Offset the duplicate slightly so it doesn't perfectly overlap.
+      final double dx = original.x < 0.8 ? 0.08 : -0.08;
+      final double dy = original.y < 0.8 ? 0.08 : -0.08;
+      list.insert(
+        index + 1,
+        original.copyWith(
+          x: (original.x + dx).clamp(0.0, 1.0),
+          y: (original.y + dy).clamp(0.0, 1.0),
+        ),
+      );
+      _state = _state.copyWith(stickers: list);
+      _selectedSticker = index + 1;
+    });
+  }
+
+  void _reorderSticker(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _state.stickers.length) return;
+    if (newIndex < 0 || newIndex > _state.stickers.length) return;
+    _undoRedo.record(_state);
+    setState(() {
+      final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers);
+      final StickerPlacement item = list.removeAt(oldIndex);
+      final int insertAt = newIndex > oldIndex ? newIndex - 1 : newIndex;
+      list.insert(insertAt, item);
+      _state = _state.copyWith(stickers: list);
+      _selectedSticker = insertAt;
+    });
+  }
+
+  void _undo() {
+    final DecorationState? previous = _undoRedo.undo(_state);
+    if (previous == null) return;
+    setState(() {
+      _state = previous;
+      _selectedSticker = null;
+      _selectedText = null;
+    });
+  }
+
+  void _redo() {
+    final DecorationState? next = _undoRedo.redo(_state);
+    if (next == null) return;
+    setState(() {
+      _state = next;
+      _selectedSticker = null;
+      _selectedText = null;
+    });
+  }
+
   void _addText() {
     final String text = _textController.text.trim().isEmpty
         ? 'Cute!'
         : _textController.text.trim();
+    _undoRedo.record(_state);
     setState(() {
       _state = _state.copyWith(
         texts: <TextPlacement>[
@@ -783,11 +942,12 @@ class _DecorateScreenState extends State<DecorateScreen> {
 
   void _removeText(int index) {
     if (index < 0 || index >= _state.texts.length) return;
+    _undoRedo.record(_state);
     setState(() {
       final List<TextPlacement> list = List<TextPlacement>.from(_state.texts)
         ..removeAt(index);
       _state = _state.copyWith(texts: list);
-      _selectedText = null;
+      if (_selectedText == index) _selectedText = null;
     });
   }
 
@@ -1027,7 +1187,10 @@ class _Composition extends StatelessWidget {
                 Positioned.fill(
                   child: IgnorePointer(
                     child: CustomPaint(
-                      painter: _FramePainter(style: state.frameStyle),
+                      painter: _FrameThemePainter(
+                        theme: state.frameTheme,
+                        wordmarkSize: 13 * (width / PhotoStripGeometry.exportWidth),
+                      ),
                     ),
                   ),
                 ),
@@ -1040,22 +1203,25 @@ class _Composition extends StatelessWidget {
   }
 }
 
-class _FramePainter extends CustomPainter {
-  const _FramePainter({required this.style});
+class _FrameThemePainter extends CustomPainter {
+  const _FrameThemePainter({required this.theme, this.wordmarkSize = 36});
 
-  final FrameStyle style;
+  final FrameTheme theme;
+  final double wordmarkSize;
 
   @override
   void paint(Canvas canvas, Size size) {
-    FrameDecorations.paintFrame(
+    FrameThemePainter.paint(
       canvas,
       Rect.fromLTWH(0, 0, size.width, size.height),
-      style,
+      theme,
+      wordmarkSize: wordmarkSize,
     );
   }
 
   @override
-  bool shouldRepaint(covariant _FramePainter old) => old.style != style;
+  bool shouldRepaint(covariant _FrameThemePainter old) =>
+      old.theme != theme || old.wordmarkSize != wordmarkSize;
 }
 
 class _PhotoGrid extends StatelessWidget {
@@ -1150,7 +1316,14 @@ class _DraggableSticker extends StatelessWidget {
               width: 1.5,
             ),
           ),
-          child: RetroSticker(type: sticker.type, size: size),
+          // Apply scale and rotation transforms so the preview matches export.
+          child: Transform.rotate(
+            angle: sticker.rotation,
+            child: Transform.scale(
+              scale: sticker.scale,
+              child: RetroSticker(type: sticker.type, size: size),
+            ),
+          ),
         ),
       ),
     );
@@ -1780,6 +1953,187 @@ class _StickerChip extends StatelessWidget {
           ),
           child: Center(
             child: RetroSticker(type: type, size: 28),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Sticker manipulation controls shown in the Stickers tab when a sticker is
+/// selected: scale, rotate, duplicate, delete and layer ordering.
+class _StickerControls extends StatelessWidget {
+  const _StickerControls({
+    required this.sticker,
+    required this.canMoveUp,
+    required this.canMoveDown,
+    required this.onScale,
+    required this.onRotate,
+    required this.onDuplicate,
+    required this.onDelete,
+    required this.onMoveUp,
+    required this.onMoveDown,
+  });
+
+  final StickerPlacement sticker;
+  final bool canMoveUp;
+  final bool canMoveDown;
+  final ValueChanged<double> onScale;
+  final ValueChanged<double> onRotate;
+  final VoidCallback onDuplicate;
+  final VoidCallback onDelete;
+  final VoidCallback onMoveUp;
+  final VoidCallback onMoveDown;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(S.sm),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: R.all(R.md),
+        border: Border.all(color: AppColors.darkLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            '${sticker.type.label} sticker',
+            style: AppText.label.copyWith(color: AppColors.onDark),
+          ),
+          const SizedBox(height: S.xs),
+          Text(
+            'Scale: ${(sticker.scale * 100).round()}%',
+            style: AppText.caption.copyWith(color: AppColors.darkMuted),
+          ),
+          const SizedBox(height: S.xs),
+          // Scale controls
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ControlButton(
+                  icon: Icons.remove_rounded,
+                  label: 'Smaller',
+                  onPressed: () => onScale(0.85),
+                ),
+              ),
+              const SizedBox(width: S.xs),
+              Expanded(
+                child: _ControlButton(
+                  icon: Icons.add_rounded,
+                  label: 'Larger',
+                  onPressed: () => onScale(1.18),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: S.xs),
+          // Rotate controls
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ControlButton(
+                  icon: Icons.rotate_left_rounded,
+                  label: 'Rotate L',
+                  onPressed: () => onRotate(-math.pi / 12),
+                ),
+              ),
+              const SizedBox(width: S.xs),
+              Expanded(
+                child: _ControlButton(
+                  icon: Icons.rotate_right_rounded,
+                  label: 'Rotate R',
+                  onPressed: () => onRotate(math.pi / 12),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: S.xs),
+          // Duplicate & Delete
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ControlButton(
+                  icon: Icons.copy_rounded,
+                  label: 'Duplicate',
+                  onPressed: onDuplicate,
+                ),
+              ),
+              const SizedBox(width: S.xs),
+              Expanded(
+                child: _ControlButton(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Delete',
+                  onPressed: onDelete,
+                  color: AppColors.hotPink,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: S.xs),
+          // Layer ordering
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ControlButton(
+                  icon: Icons.arrow_upward_rounded,
+                  label: 'Forward',
+                  onPressed: canMoveUp ? onMoveUp : null,
+                ),
+              ),
+              const SizedBox(width: S.xs),
+              Expanded(
+                child: _ControlButton(
+                  icon: Icons.arrow_downward_rounded,
+                  label: 'Backward',
+                  onPressed: canMoveDown ? onMoveDown : null,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ControlButton extends StatelessWidget {
+  const _ControlButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = color ?? AppColors.onDark;
+    return Material(
+      color: AppColors.darkElevated,
+      borderRadius: R.all(R.sm),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: R.all(R.sm),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: S.xs),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, size: 16, color: onPressed != null ? fg : AppColors.darkMuted),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: AppText.caption.copyWith(
+                  fontSize: 9,
+                  color: onPressed != null ? fg : AppColors.darkMuted,
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:photo_booth/core/filters/photo_filter.dart';
 import 'package:photo_booth/features/decorate/decoration_model.dart';
+import 'package:photo_booth/features/decorate/frame_theme.dart';
 import 'package:photo_booth/features/export/photo_strip_renderer.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
 
@@ -158,17 +159,17 @@ void main() {
       expect(adjusted, isNot(orderedEquals(plain)));
     });
 
-    test('frame style changes the export chrome', () async {
-      final Uint8List dots = await renderWith(_base);
+    test('frame theme changes the export chrome', () async {
+      final Uint8List retro = await renderWith(_base);
       final Uint8List film = await renderWith(
-        _base.copyWith(frameStyle: FrameStyle.filmEdge),
+        _base.copyWith(frameTheme: FrameTheme.vintageFilm),
       );
-      final Uint8List scallop = await renderWith(
-        _base.copyWith(frameStyle: FrameStyle.scallop),
+      final Uint8List kawaii = await renderWith(
+        _base.copyWith(frameTheme: FrameTheme.kawaii),
       );
-      expect(film, isNot(orderedEquals(dots)));
-      expect(scallop, isNot(orderedEquals(dots)));
-      expect(scallop, isNot(orderedEquals(film)));
+      expect(film, isNot(orderedEquals(retro)));
+      expect(kawaii, isNot(orderedEquals(retro)));
+      expect(kawaii, isNot(orderedEquals(film)));
     });
 
     test('captions render into the exported strip', () async {
