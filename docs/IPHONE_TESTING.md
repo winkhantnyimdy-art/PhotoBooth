@@ -1,4 +1,4 @@
-# Testing PhotoBooth on a physical iPhone (Windows PC, Wi-Fi, HTTPS)
+# Testing PhotoBooth V2 on a physical iPhone (Windows PC, Wi-Fi, HTTPS)
 
 iOS Safari will not grant camera access on a plain `http://` address, and the
 app deliberately refuses to run the camera outside a secure context. Everything
@@ -116,13 +116,20 @@ service worker precaches the app shell.
 
 | Area | Expectation |
 | --- | --- |
-| Camera start | Live preview appears within a second or two of granting permission. |
+| **Camera preview fills the screen** | **The key V2 check.** The viewfinder must reach every edge of its box with **no black bars above or below** and no narrow horizontal band. This was the defect reported on the iPhone 16e. |
+| **Preview is upright** | Faces must appear upright, not rotated 90 degrees. |
+| **Front camera mirroring** | In the selfie view the image reads as a mirror; switch to the rear camera and it must stop mirroring. |
+| Crop guide | A 3:4 guide with thirds is drawn over the feed and the area outside it is dimmed. What is inside the guide is what is kept. |
+| Layouts | **4 CUT** is selected by default. It is a tall, narrow strip (four portrait frames stacked) — that is correct for a 4-cut. **2x2** gives a balanced, photo-like result. |
 | Permission denied | A readable "Camera access blocked" card with iPhone-specific instructions and a **Try again** button - not a raw error. |
 | Insecure context | "Camera needs a secure connection" naming the `https://` requirement. |
-| Multi-shot | Countdown 3-2-1, flash, and the `n of N` progress pill all animate for every shot. |
+| Multi-shot | Countdown 3-2-1, flash, and the `n of N` progress pill animate for every shot. |
+| **Individual retake** | On Review, tap a thumbnail to select it, then **Retake**. It must return to the camera, show "Replacing shot N", capture exactly **one** frame, and return to Review with every other photo still present. |
+| **Layout switch** | In Decorate, a chip row switches layout. Only layouts that fit the captured photos are offered. Photos and edits must survive. |
 | Camera switch | The switch control is enabled only when the browser reports more than one video input. On iPhone this is front + back. |
 | Review / Decorate / Export | Photos render; filters, frames, stickers, text and adjustments all apply live. |
-| Export preview vs PNG | The strip on the Export screen must match the downloaded PNG. |
+| **No stretched faces** | Photos must be cover-cropped, never squashed. The exported strip must match the Decorate preview. |
+| Export preview | The whole strip must be visible, scaled to fit — not cut off. |
 | **Download PNG** | Saves a real `.png` to **Files** (not Photos). The UI says so explicitly. |
 | **Share** | Opens the iOS share sheet with the PNG attached; "Save Image" from there puts it in Photos. |
 | Safe areas | Nothing clipped under the notch or the home indicator, in both Safari and installed mode. |
@@ -184,6 +191,8 @@ Screenshots land in `build\web_smoke\`, and the exported PNG is written to
 | "This site can't be reached" | The local server or tunnel is down. Check Terminal 1 and 2 are still running. |
 | Camera never prompts | Open via the `https://` tunnel URL, not `http://192.168.x.x`. On iOS, reset permission via `aA` -> Website Settings -> Camera. |
 | Blank/black preview | The browser reports no video input. Close other apps and tabs using the camera, then reload. |
+| **Preview is a short band with black bars** | This was the V1 defect and is fixed in `50b1fff`. If you still see it, confirm the page served `main.dart.js` from the latest build (hard-reload in Safari: tap the reload button in the address bar). |
+| Preview appears rotated sideways | Report it with the device model and iOS version; it is a distinct bug from the banding. |
 | Download does nothing | iOS Safari may show a "download" banner at the top; tap it. Alternatively use **Share** -> **Save Image**, which goes straight to Photos. |
 | Page loads but camera is blank after switching cameras | Some iOS versions expose the front camera only while another app holds the rear one. Close camera apps and retry. |
 | Install to Home Screen missing the icon | Safari requires a secure origin plus at least one visit. Confirm the URL is `https://` and reload once. |
