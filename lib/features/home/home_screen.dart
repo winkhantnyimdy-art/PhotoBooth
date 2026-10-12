@@ -10,8 +10,12 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/pressable.dart';
 import 'layout_model.dart';
-
-import 'package:photo_booth/features/camera/camera_screen.dart';
+import '../album/album_screen.dart';
+import '../album/album_service_io.dart'
+    if (dart.library.js_interop) '../album/album_service_web.dart';
+import '../camera/camera_screen.dart';
+import '../camera/preferences_service.dart';
+import '../settings/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const Positioned.fill(child: ScrapbookDoodles()),
             Column(
               children: <Widget>[
+                _buildTopBar(),
                 Expanded(
                   child: SingleChildScrollView(
                     child: Column(
@@ -116,6 +121,146 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildTopBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.sm),
+      child: Row(
+        children: <Widget>[
+          _CircleButton(
+            icon: Icons.photo_library_rounded,
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const _AlbumRoute(),
+                ),
+              );
+            },
+            tooltip: 'Album',
+          ),
+          Expanded(
+            child: Center(
+              child: Text(
+                'PhotoBooth',
+                style: AppText.title.copyWith(color: AppColors.onDark),
+              ),
+            ),
+          ),
+          _CircleButton(
+            icon: Icons.settings_rounded,
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const _SettingsRoute(),
+                ),
+              );
+            },
+            tooltip: 'Settings',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CircleButton extends StatelessWidget {
+  const _CircleButton({required this.icon, this.onPressed, this.tooltip});
+
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool enabled = onPressed != null;
+    return Tooltip(
+      message: tooltip ?? '',
+      child: Material(
+        color: enabled ? AppColors.surface : AppColors.background,
+        shape: CircleBorder(side: BorderSide(color: AppColors.line)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Icon(
+              icon,
+              size: 22,
+              color: enabled ? AppColors.onDark : AppColors.darkMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Route wrapper that initializes PreferencesService before showing SettingsScreen.
+class _SettingsRoute extends StatelessWidget {
+  const _SettingsRoute();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<PreferencesService>(
+      future: PreferencesService.create(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            body: Center(
+              child: CircularProgressIndicator(color: AppColors.hotPink),
+            ),
+          );
+        }
+        if (snapshot.hasError) {
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            body: Center(
+              child: Text('Failed to load settings: ${snapshot.error}'),
+            ),
+          );
+        }
+        return SettingsScreen(preferencesService: snapshot.data!);
+      },
+    );
+  }
+}
+
+/// Route wrapper that initializes AlbumService before showing AlbumScreen.
+class _AlbumRoute extends StatelessWidget {
+  const _AlbumRoute();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<AppAlbumService>(
+      future: _createAlbumService(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            body: Center(
+              child: CircularProgressIndicator(color: AppColors.hotPink),
+            ),
+          );
+        }
+        if (snapshot.hasError) {
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            body: Center(
+              child: Text('Failed to load album: ${snapshot.error}'),
+            ),
+          );
+        }
+        return AlbumScreen(albumService: snapshot.data!);
+      },
+    );
+  }
+
+  static Future<AppAlbumService> _createAlbumService() async {
+    final service = AppAlbumService();
+    await service.initialize();
+    return service;
   }
 }
 

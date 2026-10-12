@@ -18,7 +18,9 @@ import '../../shared/pressable.dart';
 import '../home/layout_model.dart';
 import '../review/review_screen.dart';
 import 'captured_session.dart';
+import 'camera_preferences.dart';
 import 'photo_viewfinder.dart';
+import 'preferences_service.dart';
 import 'session_state.dart';
 import 'session_runner.dart';
 import 'timing.dart';
@@ -87,11 +89,24 @@ class _CameraScreenState extends State<CameraScreen>
   CancellationToken _cancelToken = CancellationToken();
   double? _aspectRatio;
 
+  /// Camera preferences loaded from persistent storage.
+  CameraPreferences _preferences = const CameraPreferences();
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadPreferences();
     _initCamera();
+  }
+
+  Future<void> _loadPreferences() async {
+    final service = await PreferencesService.create();
+    if (mounted) {
+      setState(() {
+        _preferences = service.load();
+      });
+    }
   }
 
   void _initCamera() async {
@@ -269,6 +284,7 @@ class _CameraScreenState extends State<CameraScreen>
         widget.onStateChange?.call(state, countdown: countdown, shot: shot);
       },
       cancelToken: _cancelToken,
+      countdownSeconds: _preferences.countdownSeconds,
     );
 
     setState(() {
@@ -585,7 +601,8 @@ class _CameraScreenState extends State<CameraScreen>
                 Positioned.fill(
                   child: _CountdownOverlay(number: _countdownNumber),
                 ),
-              if (_sessionState == CameraSessionState.capturing)
+              if (_sessionState == CameraSessionState.capturing &&
+                  _preferences.flashAnimationEnabled)
                 const Positioned.fill(
                   child: _FlashOverlay(key: ValueKey('capture-flash')),
                 ),

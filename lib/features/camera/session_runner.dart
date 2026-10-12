@@ -35,6 +35,7 @@ class SessionResult {
 ///   test fakes return a fake XFile or throw to simulate errors.
 /// - [onStep] — callback called on each state transition; used by tests
 ///   to record the sequence without real delays.
+/// - [countdownSeconds] — duration of the countdown (3, 5, or 10 seconds).
 ///
 /// Cancellation is cooperative: the runner checks [cancelToken.cancelled]
 /// between shots and aborts immediately if set. No [setState] is called
@@ -45,6 +46,7 @@ class SessionRunner {
     required this.takePicture,
     required this.onStep,
     this.cancelToken,
+    this.countdownSeconds = 3,
   });
 
   final Timing timing;
@@ -52,6 +54,7 @@ class SessionRunner {
   final void Function(CameraSessionState state, {int? countdown, int? shot})
   onStep;
   final CancellationToken? cancelToken;
+  final int countdownSeconds;
 
   /// Ordered history of states (for test assertions).
   final List<CameraSessionState> stepHistory = [];
@@ -72,8 +75,8 @@ class SessionRunner {
         );
       }
 
-      // Countdown 3, 2, 1
-      for (var n = 3; n >= 1; n--) {
+      // Countdown from countdownSeconds down to 1
+      for (var n = countdownSeconds; n >= 1; n--) {
         if (token != null && token.cancelled) {
           onStep(CameraSessionState.ready);
           stepHistory.add(CameraSessionState.ready);
