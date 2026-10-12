@@ -1,25 +1,28 @@
 import 'package:flutter/material.dart';
 
 abstract final class AppColors {
-  static const Color background = Color(0xFFFDF6BC);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceMuted = Color(0xFFFCF6E8);
+  // --- Cream / paper scrapbook surface (Home) ------------------------------
+  /// Warm cream canvas, per the Retro Film Pop "background_cream" token.
+  static const Color background = Color(0xFFFFF7F0);
+  static const Color surface = Color(0xFFFFFDF8);
+  static const Color surfaceMuted = Color(0xFFF9F0E7);
   static const Color surfaceTint = Color(0xFFFEEEB8);
   static const Color scrim = Color(0x59121212);
 
-  static const Color accent = Color(0xFFFF4D8D);
+  // --- Pink primary --------------------------------------------------------
+  static const Color accent = Color(0xFFFF6696);
   static const Color accentDeep = Color(0xFFE63E7A);
   static const Color accentSoft = Color(0xFFFFE4E9);
   static const Color accentInk = Color(0xFFB21B2E);
 
   static const Color popYellow = Color(0xFFFED759);
-  static const Color popPink = Color(0xFFFF6B9D);
+  static const Color popPink = Color(0xFFFF6696);
   static const Color popBlue = Color(0xFF8FB8FC);
   static const Color popNavy = Color(0xFF2A4B9B);
   static const Color popInk = Color(0xFF121212);
   static const Color onAccent = Colors.white;
 
-  static const Color bubblePink = Color(0xFFFF4D8D);
+  static const Color bubblePink = Color(0xFFFF6696);
   static const Color bubbleBlue = Color(0xFF87CEEB);
   static const Color bubbleOutline = Color(0xFFFFFFFF);
 
@@ -49,4 +52,17 @@ abstract final class AppColors {
   static const Color danger = Color(0xFFEB3E54);
   static const Color success = Color(0xFF4F9D7E);
   static const Color previewBackdrop = Color(0xFF1B1A18);
+
+  // --- Dark workspace (Camera / Review / Decorate / Export) ---------------
+  /// Near-black editor canvas: "dark photographic" rather than grey Material.
+  static const Color darkSurface = Color(0xFF151416);
+
+  /// Slightly lifted panels and chips that sit on [darkSurface].
+  static const Color darkElevated = Color(0xFF221F24);
+
+  /// Hairline/divider colour on dark surfaces.
+  static const Color darkLine = Color(0xFF37333C);
+
+  /// Muted copy on dark surfaces.
+  static const Color darkMuted = Color(0xFFB7B1BD);
 }

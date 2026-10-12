@@ -7,17 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photo_booth/core/theme/app_theme.dart';
 import 'package:photo_booth/features/decorate/decoration_model.dart';
 import 'package:photo_booth/features/export/export_screen.dart';
-import 'package:photo_booth/features/export/export_service.dart';
 import 'package:photo_booth/features/export/photo_strip_renderer.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
 
-class _FakeExportService implements ExportService {
-  @override
-  Future<void> saveToGallery(Uint8List bytes, String fileName) async {}
+import '../../support/fake_export_service.dart';
 
-  @override
-  Future<void> shareImage(Uint8List bytes, String fileName) async {}
-}
+class _FakeExportService extends RecordingExportService {}
 
 /// Renders the real strip so the preview has genuine bytes to lay out.
 class _RealRenderer extends PhotoStripRenderer {}
@@ -50,7 +45,7 @@ Future<void> _settleRender(WidgetTester tester) async {
 }
 
 const DecorationState _cleanCream = DecorationState(
-  layout: PhotoLayout.cut4,
+  layout: PhotoLayout.grid4,
   background: BackgroundChoice.cream,
   style: DecorativeStyle.clean,
 );
@@ -73,7 +68,7 @@ void main() {
         await tester.pumpWidget(
           _app(
             ExportScreen(
-              layout: PhotoLayout.cut4,
+              layout: PhotoLayout.grid4,
               photos: const <XFile>[],
               decorationState: _cleanCream,
               exportService: _FakeExportService(),
@@ -117,9 +112,9 @@ void main() {
       await tester.pumpWidget(
         _app(
           ExportScreen(
-            layout: PhotoLayout.cut2,
+            layout: PhotoLayout.pair2,
             photos: const <XFile>[],
-            decorationState: _cleanCream.copyWith(layout: PhotoLayout.cut2),
+            decorationState: _cleanCream.copyWith(layout: PhotoLayout.pair2),
             exportService: _FakeExportService(),
             renderer: _RealRenderer(),
           ),
@@ -151,7 +146,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           ExportScreen(
-            layout: PhotoLayout.cut4,
+            layout: PhotoLayout.grid4,
             photos: const <XFile>[],
             decorationState: _cleanCream,
             exportService: _FakeExportService(),
@@ -171,7 +166,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           ExportScreen(
-            layout: PhotoLayout.cut4,
+            layout: PhotoLayout.grid4,
             photos: const <XFile>[],
             decorationState: _cleanCream,
             exportService: _FakeExportService(),
@@ -196,7 +191,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           ExportScreen(
-            layout: PhotoLayout.cut4,
+            layout: PhotoLayout.grid4,
             photos: const <XFile>[],
             decorationState: _cleanCream,
             exportService: _FakeExportService(),

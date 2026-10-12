@@ -7,7 +7,7 @@ void main() {
   group('DecorationState', () {
     test('defaults showDate false and empty stickers', () {
       const state = DecorationState(
-        layout: PhotoLayout.cut4,
+        layout: PhotoLayout.grid4,
         background: BackgroundChoice.cream,
         style: DecorativeStyle.clean,
       );
@@ -19,7 +19,7 @@ void main() {
     test('displayDate falls back to now when no override', () {
       final before = DateTime.now();
       const state = DecorationState(
-        layout: PhotoLayout.cut4,
+        layout: PhotoLayout.grid4,
         background: BackgroundChoice.cream,
         style: DecorativeStyle.clean,
       );
@@ -38,7 +38,7 @@ void main() {
     test('displayDate returns dateOverride when provided', () {
       final override = DateTime(2024, 1, 15);
       final state = DecorationState(
-        layout: PhotoLayout.cut4,
+        layout: PhotoLayout.grid4,
         background: BackgroundChoice.cream,
         style: DecorativeStyle.clean,
         dateOverride: override,
@@ -49,7 +49,7 @@ void main() {
 
     test('copyWith replaces only the given fields', () {
       const state = DecorationState(
-        layout: PhotoLayout.cut4,
+        layout: PhotoLayout.grid4,
         background: BackgroundChoice.cream,
         style: DecorativeStyle.clean,
       );
@@ -59,7 +59,7 @@ void main() {
         showDate: true,
       );
 
-      expect(updated.layout, equals(PhotoLayout.cut4));
+      expect(updated.layout, equals(PhotoLayout.grid4));
       expect(updated.background, equals(BackgroundChoice.charcoal));
       expect(updated.style, equals(DecorativeStyle.clean));
       expect(updated.showDate, isTrue);
@@ -73,7 +73,7 @@ void main() {
         y: 0.5,
       );
       final state = DecorationState(
-        layout: PhotoLayout.cut4,
+        layout: PhotoLayout.grid4,
         background: BackgroundChoice.cream,
         style: DecorativeStyle.clean,
         stickers: [sticker],
@@ -87,7 +87,7 @@ void main() {
 
     test('copyWith can replace stickers list', () {
       final state = DecorationState(
-        layout: PhotoLayout.cut4,
+        layout: PhotoLayout.grid4,
         background: BackgroundChoice.cream,
         style: DecorativeStyle.clean,
       );

@@ -2,9 +2,30 @@ import 'dart:math' as math;
 
 import 'dart:ui' as ui;
 
+import '../../features/decorate/decoration_model.dart';
 import '../theme/app_colors.dart';
 
+/// Paper and border treatments drawn around a photo strip.
+///
+/// The same painters run on the Decorate preview and inside the PNG renderer,
+/// so the frame a user picks is the frame that gets printed. All sizes are
+/// derived from the target rectangle, which keeps the chrome proportional at
+/// any preview scale or at full export resolution.
 abstract final class FrameDecorations {
+  /// Dispatches to the painter for [style], sized relative to [rect].
+  static void paintFrame(ui.Canvas canvas, ui.Rect rect, FrameStyle style) {
+    switch (style) {
+      case FrameStyle.polkaDot:
+        paintPolkaDotFrame(canvas, rect);
+      case FrameStyle.filmEdge:
+        paintFilmEdgeFrame(canvas, rect);
+      case FrameStyle.scallop:
+        paintScallopFrame(canvas, rect);
+      case FrameStyle.minimal:
+        paintMinimalFrame(canvas, rect);
+    }
+  }
+
   static void paintPolkaDotFrame(
     ui.Canvas canvas,
     ui.Rect rect, {
@@ -40,6 +61,106 @@ abstract final class FrameDecorations {
         }
       }
     }
+  }
+
+  /// Vintage film rails down both long edges, with sprocket holes.
+  static void paintFilmEdgeFrame(ui.Canvas canvas, ui.Rect rect) {
+    final double rail = math.max(6, rect.width * 0.0135);
+    final ui.Paint railPaint = ui.Paint()
+      ..color = AppColors.popInk
+      ..style = ui.PaintingStyle.fill;
+
+    canvas.drawRect(
+      ui.Rect.fromLTWH(rect.left, rect.top, rail, rect.height),
+      railPaint,
+    );
+    canvas.drawRect(
+      ui.Rect.fromLTWH(rect.right - rail, rect.top, rail, rect.height),
+      railPaint,
+    );
+
+    final ui.Paint holePaint = ui.Paint()
+      ..color = AppColors.surface
+      ..style = ui.PaintingStyle.fill;
+    final double hole = rail * 0.5;
+    final double step = hole * 2.4;
+    for (double y = rect.top + step; y < rect.bottom - step; y += step) {
+      canvas.drawRRect(
+        ui.RRect.fromRectAndRadius(
+          ui.Rect.fromCenter(
+            center: ui.Offset(rect.left + rail / 2, y),
+            width: hole,
+            height: hole,
+          ),
+          ui.Radius.circular(hole * 0.25),
+        ),
+        holePaint,
+      );
+      canvas.drawRRect(
+        ui.RRect.fromRectAndRadius(
+          ui.Rect.fromCenter(
+            center: ui.Offset(rect.right - rail / 2, y),
+            width: hole,
+            height: hole,
+          ),
+          ui.Radius.circular(hole * 0.25),
+        ),
+        holePaint,
+      );
+    }
+  }
+
+  /// A scalloped pink border, like a doily edge.
+  static void paintScallopFrame(ui.Canvas canvas, ui.Rect rect) {
+    final ui.Paint pink = ui.Paint()
+      ..color = AppColors.popPink
+      ..style = ui.PaintingStyle.fill;
+    final double band = math.max(6, rect.width * 0.014);
+
+    // Solid band framing the strip.
+    canvas.drawPath(
+      ui.Path()
+        ..addRRect(ui.RRect.fromRectAndRadius(rect, const ui.Radius.circular(16)))
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            rect.deflate(band),
+            const ui.Radius.circular(12),
+          ),
+        )
+        ..fillType = ui.PathFillType.evenOdd,
+      pink,
+    );
+
+    // Punch a row of surface-coloured circles along the band for the scallop.
+    final ui.Paint cut = ui.Paint()
+      ..color = AppColors.surface
+      ..style = ui.PaintingStyle.fill;
+    final double radius = band * 0.42;
+    final double spacing = radius * 2.4;
+    for (double x = rect.left + spacing; x < rect.right - spacing; x += spacing) {
+      canvas.drawCircle(ui.Offset(x, rect.top + band / 2), radius, cut);
+      canvas.drawCircle(ui.Offset(x, rect.bottom - band / 2), radius, cut);
+    }
+    for (double y = rect.top + spacing; y < rect.bottom - spacing; y += spacing) {
+      canvas.drawCircle(ui.Offset(rect.left + band / 2, y), radius, cut);
+      canvas.drawCircle(ui.Offset(rect.right - band / 2, y), radius, cut);
+    }
+  }
+
+  /// A thin solid border in the brand pink.
+  static void paintMinimalFrame(ui.Canvas canvas, ui.Rect rect) {
+    final ui.Paint paint = ui.Paint()
+      ..color = AppColors.popPink
+      ..style = ui.PaintingStyle.stroke
+      ..strokeWidth = math.max(2, rect.width * 0.006)
+      ..strokeJoin = ui.StrokeJoin.round;
+    canvas.drawRRect(
+      ui.RRect.fromRectAndRadius(
+        rect.deflate(paint.strokeWidth / 2),
+        const ui.Radius.circular(14),
+      ),
+      paint,
+    );
   }
 
   static void paintGinghamFrame(

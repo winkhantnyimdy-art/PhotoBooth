@@ -108,7 +108,7 @@ class _ExportScreenState extends State<ExportScreen> {
                 size: 20,
               ),
               const SizedBox(width: S.sm + S.xs),
-              const Expanded(child: Text('Saved to Photos!')),
+              Expanded(child: Text(_exportService.saveMessage)),
             ],
           ),
         ),
@@ -173,7 +173,7 @@ class _ExportScreenState extends State<ExportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.darkSurface,
       body: SafeArea(
         child: _errorMessage != null
             ? _buildError()
@@ -241,13 +241,13 @@ class _ExportScreenState extends State<ExportScreen> {
                 Text(
                   _errorMessage!,
                   textAlign: TextAlign.center,
-                  style: AppText.heading,
+                  style: AppText.heading.copyWith(color: AppColors.onDark),
                 ),
                 const SizedBox(height: S.xs),
                 Text(
                   'Nothing was saved. Try rendering the strip again.',
                   textAlign: TextAlign.center,
-                  style: AppText.caption,
+                  style: AppText.caption.copyWith(color: AppColors.darkMuted),
                 ),
                 const SizedBox(height: S.lg),
                 PressableScale(
@@ -310,9 +310,23 @@ class _ExportScreenState extends State<ExportScreen> {
                       ),
                       const SizedBox(height: S.md),
                     ],
-                    _KeepsakePreview(
-                      bytes: _renderedImage!,
-                      aspectRatio: aspect,
+                    // Always scaled to fit the space available, so a tall strip (the Korean
+                    // 4-cut is several times taller than it is wide) is shown
+                    // whole rather than cropped. The user must be able to see
+                    // what they are about to save.
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 460),
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: SizedBox(
+                          width: 320,
+                          height: 320 / aspect,
+                          child: _KeepsakePreview(
+                            bytes: _renderedImage!,
+                            aspectRatio: aspect,
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: S.md),
                   ],
@@ -322,6 +336,8 @@ class _ExportScreenState extends State<ExportScreen> {
             _ActionBar(
               isSaving: _isSaving,
               isSharing: _isSharing,
+              saveLabel: _exportService.saveLabel,
+              saveHint: _exportService.saveHint,
               onSave: _handleSave,
               onShare: _handleShare,
               onMakeAnother: () {
@@ -365,6 +381,9 @@ class _KeepsakePreview extends StatelessWidget {
             bottom: 16,
             child: RetroSticker(type: StickerType.sparkle, size: 18),
           ),
+          // AspectRatio inside a bounded box: the strip is always shown whole,
+          // scaled down rather than cropped, so the user sees exactly the PNG
+          // they are about to save.
           AspectRatio(
             aspectRatio: aspectRatio,
             child: TweenAnimationBuilder<double>(
@@ -399,6 +418,8 @@ class _ActionBar extends StatelessWidget {
   const _ActionBar({
     required this.isSaving,
     required this.isSharing,
+    required this.saveLabel,
+    required this.saveHint,
     required this.onSave,
     required this.onShare,
     required this.onMakeAnother,
@@ -406,6 +427,12 @@ class _ActionBar extends StatelessWidget {
 
   final bool isSaving;
   final bool isSharing;
+
+  /// Platform-specific primary action label ("Save to Photos" / "Download PNG").
+  final String saveLabel;
+
+  /// Extra guidance for the browser, or null on native.
+  final String? saveHint;
   final VoidCallback onSave;
   final VoidCallback onShare;
   final VoidCallback onMakeAnother;
@@ -421,7 +448,7 @@ class _ActionBar extends StatelessWidget {
         S.md + MediaQuery.paddingOf(context).bottom,
       ),
       decoration: const BoxDecoration(
-        color: AppColors.background,
+        color: AppColors.darkSurface,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -441,7 +468,7 @@ class _ActionBar extends StatelessWidget {
                       ),
                     )
                   : const Icon(Icons.download_rounded, size: 20),
-              label: const Text('Save to Photos'),
+              label: Text(saveLabel),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
                 backgroundColor: AppColors.hotPink,
@@ -449,6 +476,14 @@ class _ActionBar extends StatelessWidget {
               ),
             ),
           ),
+          if (saveHint != null) ...<Widget>[
+            const SizedBox(height: S.sm + S.xs),
+            Text(
+              saveHint!,
+              textAlign: TextAlign.center,
+              style: AppText.caption.copyWith(color: AppColors.darkMuted),
+            ),
+          ],
           const SizedBox(height: S.sm + S.xs),
           PressableScale(
             enabled: !isSaving && !isSharing,
@@ -464,7 +499,8 @@ class _ActionBar extends StatelessWidget {
               label: const Text('Share'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
-                side: const BorderSide(color: AppColors.popNavy, width: 2),
+                foregroundColor: AppColors.onDark,
+                side: const BorderSide(color: AppColors.darkLine, width: 2),
                 shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
               ),
             ),
@@ -475,6 +511,9 @@ class _ActionBar extends StatelessWidget {
               onPressed: onMakeAnother,
               icon: const Icon(Icons.replay_rounded, size: 20),
               label: const Text('Make Another'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.darkMuted,
+              ),
             ),
           ),
         ],
@@ -493,8 +532,8 @@ class _CircleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool enabled = onPressed != null;
     return Material(
-      color: enabled ? AppColors.surface : AppColors.surfaceMuted,
-      shape: const CircleBorder(side: BorderSide(color: AppColors.line)),
+      color: enabled ? AppColors.darkElevated : AppColors.darkSurface,
+      shape: CircleBorder(side: BorderSide(color: AppColors.darkLine)),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onPressed,
@@ -503,7 +542,7 @@ class _CircleButton extends StatelessWidget {
           child: Icon(
             icon,
             size: 22,
-            color: enabled ? AppColors.popNavy : AppColors.textMuted,
+            color: enabled ? AppColors.onDark : AppColors.darkMuted,
           ),
         ),
       ),

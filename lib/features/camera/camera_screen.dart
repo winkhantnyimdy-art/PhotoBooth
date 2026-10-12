@@ -1,22 +1,24 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/art/checkerboard.dart';
 import '../../core/art/retro_sticker.dart';
+import '../../core/media/browser_capabilities.dart';
+import '../../core/media/photo_source.dart';
 import '../decorate/decoration_model.dart';
+import '../home/layout_geometry.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
-import '../../shared/app_surface.dart';
 import '../../shared/pressable.dart';
 import '../home/layout_model.dart';
 import '../review/review_screen.dart';
 import 'captured_session.dart';
+import 'photo_viewfinder.dart';
 import 'session_state.dart';
 import 'session_runner.dart';
 import 'timing.dart';
@@ -35,6 +37,7 @@ class CameraScreen extends StatefulWidget {
     this.controllerFactory,
     this.timing,
     this.onStateChange,
+    this.retakeIndex,
   });
 
   final PhotoLayout layout;
@@ -45,6 +48,17 @@ class CameraScreen extends StatefulWidget {
   final void Function(CameraSessionState state, {int? countdown, int? shot})?
       onStateChange;
 
+  /// When set, the screen captures a **single** frame and pops it instead of
+  /// running a full session.
+  ///
+  /// This is what powers an individual retake from Review: the caller passes
+  /// the index being replaced and swaps the returned photo into that slot, so
+  /// every other shot - and any edits made to them - survive.
+  final int? retakeIndex;
+
+  /// True when this screen is replacing one photo rather than capturing a set.
+  bool get isRetake => retakeIndex != null;
+
   @override
   State<CameraScreen> createState() => _CameraScreenState();
 }
@@ -53,12 +67,22 @@ class _CameraScreenState extends State<CameraScreen>
     with WidgetsBindingObserver {
   CameraController? _controller;
   List<CameraDescription> _cameras = [];
-  String? _error;
+  CameraUnavailableReason? _error;
   bool _loading = true;
   bool _initialized = false;
   CameraSessionState _sessionState = CameraSessionState.ready;
   int _countdownNumber = 0;
   int _sessionCount = 0;
+
+  /// Index of the active entry in [_cameras].
+  ///
+  /// Tracked explicitly rather than matched on [CameraDescription.name]: on the
+  /// web the browser only exposes device labels after permission is granted, so
+  /// names can be empty or duplicated and would make matching unreliable.
+  int _cameraIndex = 0;
+
+  /// True while the controller is being swapped during a camera switch.
+  bool _switching = false;
   final List<XFile> _capturedPhotos = [];
   CancellationToken _cancelToken = CancellationToken();
   double? _aspectRatio;
@@ -75,22 +99,41 @@ class _CameraScreenState extends State<CameraScreen>
       _loading = true;
       _error = null;
     });
+
+    // On the web this runs before any permission prompt so the user gets
+    // "you need HTTPS" instead of a bare NotAllowedError.
+    if (!BrowserCapabilities.isSecureContext) {
+      _setError(BrowserCapabilities.insecureContextReason);
+      return;
+    }
+    if (!BrowserCapabilities.hasCameraSupport) {
+      _setError(BrowserCapabilities.unsupportedReason);
+      return;
+    }
+
     try {
       _cameras = await (widget.cameraProvider ?? availableCameras)();
     } catch (e) {
-      _setError('Camera unavailable');
+      _setError(_classifyCameraError(e));
       return;
     }
 
     if (_cameras.isEmpty) {
-      _setError('No cameras detected');
+      _setError(
+        BrowserCapabilities.describeCameraError('cameraNotFound') ??
+            const CameraUnavailableReason(
+              title: 'No cameras detected',
+              detail: 'Check that a camera is available, then try again.',
+            ),
+      );
       return;
     }
 
-    final front = _cameras.firstWhere(
+    _cameraIndex = _cameras.indexWhere(
       (c) => c.lensDirection == CameraLensDirection.front,
-      orElse: () => _cameras.first,
     );
+    if (_cameraIndex < 0) _cameraIndex = 0;
+    final front = _cameras[_cameraIndex];
 
     _controller = (widget.controllerFactory ?? CameraController.new)(
       front,
@@ -109,14 +152,28 @@ class _CameraScreenState extends State<CameraScreen>
         _initialized = true;
       });
     } catch (e) {
-      _setError('Camera failed to initialize');
+      _setError(_classifyCameraError(e));
     }
   }
 
-  void _setError(String message) {
+  /// Turns a plugin exception into copy the user can act on.
+  ///
+  /// `camera_web` throws `CameraException`s whose codes are documented in its
+  /// `CameraErrorCode` enum; [BrowserCapabilities.describeCameraError] maps
+  /// them, and anything unrecognised falls back to the generic message.
+  CameraUnavailableReason _classifyCameraError(Object error) {
+    final String? code = switch (error) {
+      CameraException(code: final String c) => c,
+      _ => null,
+    };
+    return BrowserCapabilities.describeCameraError(code) ??
+        CameraUnavailableReason.unknown;
+  }
+
+  void _setError(CameraUnavailableReason reason) {
     if (mounted) {
       setState(() {
-        _error = message;
+        _error = reason;
         _loading = false;
         _initialized = false;
       });
@@ -150,14 +207,15 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _switchCamera() async {
-    if (_cameras.length <= 1) return;
-    final currentIndex = _cameras.indexWhere(
-      (c) => c.name == _controller!.description.name,
-    );
-    final nextIndex = (currentIndex + 1) % _cameras.length;
+    if (_cameras.length <= 1 || _switching) return;
+    final nextIndex = (_cameraIndex + 1) % _cameras.length;
     final newCamera = _cameras[nextIndex];
 
-    await _controller!.dispose();
+    // The previous controller is disposed before the next one exists, so the
+    // preview must stop rendering it — on the web the backing <video> element
+    // is torn down with the controller.
+    setState(() => _switching = true);
+    await _controller?.dispose();
     _controller = (widget.controllerFactory ?? CameraController.new)(
       newCamera,
       ResolutionPreset.high,
@@ -165,15 +223,20 @@ class _CameraScreenState extends State<CameraScreen>
 
     try {
       await _controller!.initialize();
-      if (mounted) {
-        _aspectRatio = _controller!.value.previewSize != null
-            ? _controller!.value.previewSize!.width /
-                  _controller!.value.previewSize!.height
-            : null;
-        setState(() {});
-      }
+      if (!mounted) return;
+      _aspectRatio = _controller!.value.previewSize != null
+          ? _controller!.value.previewSize!.width /
+                _controller!.value.previewSize!.height
+          : null;
+      setState(() {
+        _cameraIndex = nextIndex;
+        _switching = false;
+        _initialized = true;
+        _loading = false;
+      });
     } catch (e) {
-      _setError('Camera failed to initialize');
+      _switching = false;
+      _setError(_classifyCameraError(e));
     }
   }
 
@@ -187,8 +250,11 @@ class _CameraScreenState extends State<CameraScreen>
       _cancelToken = CancellationToken();
     });
 
-    final totalShots = widget.layout.photoCount;
     final timing = widget.timing ?? SystemTiming();
+
+    // A retake captures exactly one frame: same countdown and flash feedback,
+    // but no multi-shot run and no navigation to Review.
+    final int totalShots = widget.isRetake ? 1 : widget.layout.photoCount;
 
     final runner = SessionRunner(
       timing: timing,
@@ -220,6 +286,14 @@ class _CameraScreenState extends State<CameraScreen>
       return;
     }
 
+    if (widget.isRetake) {
+      final NavigatorState navigator = Navigator.of(context);
+      navigator.pop<XFile>(result.success && result.photos.isNotEmpty
+          ? result.photos.first
+          : null);
+      return;
+    }
+
     if (result.success && result.photos.length == totalShots) {
       setState(() {
         _sessionState = CameraSessionState.complete;
@@ -229,7 +303,12 @@ class _CameraScreenState extends State<CameraScreen>
     } else {
       setState(() {
         _sessionState = CameraSessionState.error;
-        _error = result.error ?? 'Capture failed';
+        _error = CameraUnavailableReason(
+          title: result.error ?? 'Capture failed',
+          detail:
+              'The camera stopped responding mid-session. Check that no other '
+              'app is using it, then try again.',
+        );
       });
     }
   }
@@ -272,6 +351,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   bool get _isSwitchingAllowed =>
+      !_switching &&
       _cameras.length > 1 &&
       (_sessionState == CameraSessionState.ready ||
           _sessionState == CameraSessionState.error);
@@ -287,14 +367,16 @@ class _CameraScreenState extends State<CameraScreen>
         }
       },
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.darkSurface,
         body: SafeArea(
           child: Column(
             children: <Widget>[
               _buildTopBar(),
               Expanded(
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const Center(
+                        child: CircularProgressIndicator(color: AppColors.hotPink),
+                      )
                     : _error != null
                         ? _buildError()
                         : Column(
@@ -326,23 +408,31 @@ class _CameraScreenState extends State<CameraScreen>
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.xs),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: AppColors.darkElevated,
                   borderRadius: R.pillRadius,
-                  border: Border.all(color: AppColors.line),
+                  border: Border.all(color: AppColors.darkLine),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
                     Flexible(
                       child: Text(
-                        '${widget.layout.label} · ${widget.layout.photoCount} photos',
-                        style: AppText.buttonSmall,
+                        widget.isRetake
+                            ? 'Retake photo ${widget.retakeIndex! + 1}'
+                            : '${widget.layout.label} · ${widget.layout.photoCount} photos',
+                        style: AppText.buttonSmall.copyWith(
+                          color: AppColors.onDark,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 4),
-                    const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+                    const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: AppColors.darkMuted,
+                    ),
                   ],
                 ),
               ),
@@ -392,9 +482,13 @@ class _CameraScreenState extends State<CameraScreen>
   Widget _buildError() => Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(S.lg),
-          child: AppSurface(
-            semanticLabel: 'Camera error: $_error',
+          child: Container(
             padding: const EdgeInsets.all(S.lg),
+            decoration: BoxDecoration(
+              color: AppColors.darkElevated,
+              borderRadius: R.all(R.lg),
+              border: Border.all(color: AppColors.darkLine),
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
@@ -403,28 +497,38 @@ class _CameraScreenState extends State<CameraScreen>
                   height: 62,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceTint,
+                    color: AppColors.hotPink.withValues(alpha: 0.16),
                     borderRadius: R.all(R.xl),
                   ),
                   child: const Icon(
                     Icons.no_photography_rounded,
                     size: 30,
-                    color: AppColors.accentInk,
+                    color: AppColors.hotPink,
                   ),
                 ),
                 const SizedBox(height: S.md),
-                Text(_error!, textAlign: TextAlign.center, style: AppText.heading),
+                Text(
+                  _error!.title,
+                  textAlign: TextAlign.center,
+                  style: AppText.heading.copyWith(color: AppColors.onDark),
+                ),
                 const SizedBox(height: S.xs),
                 Text(
-                  'Check that a camera is available, then try again.',
+                  _error!.detail,
                   textAlign: TextAlign.center,
-                  style: AppText.caption,
+                  style: AppText.caption.copyWith(color: AppColors.darkMuted),
                 ),
                 const SizedBox(height: S.lg),
                 OutlinedButton.icon(
                   onPressed: _retry,
                   icon: const Icon(Icons.refresh),
                   label: const Text('Try again'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    foregroundColor: AppColors.onDark,
+                    side: const BorderSide(color: AppColors.darkLine),
+                    shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+                  ),
                 ),
               ],
             ),
@@ -436,6 +540,9 @@ class _CameraScreenState extends State<CameraScreen>
     final CameraController? controller = _controller;
     if (controller == null) return const SizedBox.shrink();
 
+    // The viewfinder fills the entire available area. The old implementation
+    // letterboxed a 16:9 box inside this viewport, which produced the narrow
+    // horizontal band with black bars reported on the iPhone.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: S.md),
       child: ClipRRect(
@@ -444,11 +551,19 @@ class _CameraScreenState extends State<CameraScreen>
           decoration: const BoxDecoration(color: AppColors.previewBackdrop),
           child: Stack(
             key: const ValueKey('camera-viewport'),
+            fit: StackFit.expand,
             children: <Widget>[
-              Center(
-                child: KeyedSubtree(
-                  key: ValueKey<CameraController>(controller),
-                  child: CameraPreview(controller),
+              KeyedSubtree(
+                key: ValueKey<CameraController>(controller),
+                child: PhotoViewfinder(
+                  controller: controller,
+                  borderRadius: R.all(R.lg),
+                  // Shows exactly the window that becomes one photo cell.
+                  overlay: ViewfinderCropGuide(
+                    outputAspect:
+                        PhotoStripGeometry.cellWidth(widget.layout) /
+                        PhotoStripGeometry.cellHeight(widget.layout),
+                  ),
                 ),
               ),
               Positioned(
@@ -482,7 +597,9 @@ class _CameraScreenState extends State<CameraScreen>
                   child: Center(
                     child: _ProgressIndicator(
                       captured: _sessionCount,
-                      total: widget.layout.photoCount,
+                      total: widget.isRetake
+                          ? 1
+                          : widget.layout.photoCount,
                     ),
                   ),
                 ),
@@ -496,7 +613,7 @@ class _CameraScreenState extends State<CameraScreen>
   Widget _buildControls() => Container(
         padding: const EdgeInsets.fromLTRB(S.md, S.md, S.md, S.md),
         decoration: const BoxDecoration(
-          color: AppColors.background,
+          color: AppColors.darkSurface,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -504,7 +621,34 @@ class _CameraScreenState extends State<CameraScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                for (int i = 0; i < widget.layout.photoCount; i++)
+                // In retake mode there is a single shot, so the numbered strip
+                // would be misleading; show the slot being replaced instead.
+                if (widget.isRetake)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        color: AppColors.darkElevated,
+                        border: Border.all(
+                          color: AppColors.hotPink,
+                          width: 2,
+                        ),
+                      ),
+                      child: Text(
+                        'Replacing shot ${widget.retakeIndex! + 1}',
+                        style: AppText.buttonSmall.copyWith(
+                          color: AppColors.onDark,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  for (int i = 0; i < widget.layout.photoCount; i++)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Container(
@@ -515,11 +659,11 @@ class _CameraScreenState extends State<CameraScreen>
                         shape: BoxShape.circle,
                         color: i < _sessionCount
                             ? AppColors.popYellow
-                            : AppColors.surface,
+                            : AppColors.darkElevated,
                         border: Border.all(
                           color: i < _sessionCount
                               ? AppColors.accentDeep
-                              : AppColors.line,
+                              : AppColors.darkLine,
                           width: 2,
                         ),
                       ),
@@ -529,7 +673,7 @@ class _CameraScreenState extends State<CameraScreen>
                           fontWeight: FontWeight.w800,
                           color: i < _sessionCount
                               ? AppColors.popInk
-                              : AppColors.textMuted,
+                              : AppColors.darkMuted,
                         ),
                       ),
                     ),
@@ -545,11 +689,7 @@ class _CameraScreenState extends State<CameraScreen>
                     child: SizedBox(
                       width: 44,
                       height: 44,
-                      child: Image.file(
-                        // ignore: avoid_dynamic_calls
-                        File(_capturedPhotos.last.path),
-                        fit: BoxFit.cover,
-                      ),
+                      child: PhotoImage(photo: _capturedPhotos.last),
                     ),
                   )
                 else
@@ -585,8 +725,8 @@ class _CircleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool enabled = onPressed != null;
     return Material(
-      color: enabled ? AppColors.surface : AppColors.surfaceMuted,
-      shape: const CircleBorder(side: BorderSide(color: AppColors.line)),
+      color: enabled ? AppColors.darkElevated : AppColors.darkSurface,
+      shape: CircleBorder(side: BorderSide(color: AppColors.darkLine)),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onPressed,
@@ -595,7 +735,7 @@ class _CircleButton extends StatelessWidget {
           child: Icon(
             icon,
             size: 22,
-            color: enabled ? AppColors.textPrimary : AppColors.textMuted,
+            color: enabled ? AppColors.onDark : AppColors.darkMuted,
           ),
         ),
       ),
@@ -628,16 +768,16 @@ class _CircleControl extends StatelessWidget {
           height: S.touchTarget,
           child: Material(
             color: enabled ? AppColors.surface : Colors.transparent,
-            shape: const CircleBorder(side: BorderSide(color: AppColors.line)),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: onPressed,
-              child: Icon(
-                icon,
-                size: 21,
-                color: enabled ? AppColors.textPrimary : AppColors.textMuted,
+              shape: const CircleBorder(side: BorderSide(color: AppColors.darkLine)),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onPressed,
+                child: Icon(
+                  icon,
+                  size: 21,
+                  color: enabled ? AppColors.onDark : AppColors.darkMuted,
+                ),
               ),
-            ),
           ),
         ),
       ),
@@ -695,12 +835,12 @@ class _ShutterButton extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: enabled ? AppColors.hotPink : AppColors.surfaceMuted,
+                  color: enabled ? AppColors.hotPink : AppColors.darkElevated,
                 ),
                 child: Center(
                   child: Icon(
                     busy ? Icons.stop_rounded : Icons.camera_alt_rounded,
-                    color: enabled ? AppColors.onAccent : AppColors.textMuted,
+                    color: enabled ? AppColors.onAccent : AppColors.darkMuted,
                     size: 28,
                   ),
                 ),

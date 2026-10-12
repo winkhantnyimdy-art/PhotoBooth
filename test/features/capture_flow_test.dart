@@ -69,6 +69,45 @@ Future<void> _runSession(
   fail('the capture session never finished');
 }
 
+/// Builds a [CameraScreen] wired to the fake camera, so tests that push a
+/// camera themselves (e.g. an individual retake from Review) get the same
+/// working preview and capture the main flow does.
+Widget _fakeCameraScreen({
+  required PhotoLayout layout,
+  required TestTiming timing,
+  required List<CameraSessionState> states,
+  List<XFile>? captured,
+  Completer<void>? captureGate,
+  List<_FakeCameraController>? created,
+  int? retakeIndex,
+}) {
+  final List<XFile> photos = captured ?? <XFile>[];
+  return CameraScreen(
+    layout: layout,
+    retakeIndex: retakeIndex,
+    cameraProvider: () async => <CameraDescription>[_front, _back],
+    controllerFactory:
+        (CameraDescription description, ResolutionPreset preset) {
+          final _FakeCameraController controller = _FakeCameraController(
+            description,
+          );
+          created?.add(controller);
+          return controller;
+        },
+    captureProvider: () async {
+      photos.add(XFile('/tmp/shot_${photos.length + 1}.jpg'));
+      // Holding the capture open keeps the session deterministically in
+      // the `capturing` state while the test inspects the flash overlay.
+      if (captureGate != null) await captureGate.future;
+      return photos.last;
+    },
+    timing: timing,
+    onStateChange: (CameraSessionState state, {int? countdown, int? shot}) {
+      states.add(state);
+    },
+  );
+}
+
 /// Brings the camera screen to its ready state with a working preview.
 Future<_FakeCameraController> _pumpReadyCamera(
   WidgetTester tester, {
@@ -84,28 +123,13 @@ Future<_FakeCameraController> _pumpReadyCamera(
   await tester.pumpWidget(
     MaterialApp(
       theme: AppTheme.theme,
-      home: CameraScreen(
+      home: _fakeCameraScreen(
         layout: layout,
-        cameraProvider: () async => <CameraDescription>[_front, _back],
-        controllerFactory:
-            (CameraDescription description, ResolutionPreset preset) {
-              final _FakeCameraController controller = _FakeCameraController(
-                description,
-              );
-              created.add(controller);
-              return controller;
-            },
-        captureProvider: () async {
-          photos.add(XFile('/tmp/shot_${photos.length + 1}.jpg'));
-          // Holding the capture open keeps the session deterministically in
-          // the `capturing` state while the test inspects the flash overlay.
-          if (captureGate != null) await captureGate.future;
-          return photos.last;
-        },
         timing: timing,
-        onStateChange: (CameraSessionState state, {int? countdown, int? shot}) {
-          states.add(state);
-        },
+        states: states,
+        captured: photos,
+        captureGate: captureGate,
+        created: created,
       ),
     ),
   );
@@ -118,7 +142,7 @@ Future<_FakeCameraController> _pumpReadyCamera(
   expect(created, isNotEmpty, reason: 'a controller should be created');
   expect(
     photos.length,
-    lessThan(PhotoLayout.cut2.photoCount),
+    lessThan(PhotoLayout.pair2.photoCount),
     reason: 'nothing should be captured before the shutter is tapped',
   );
   return created.first;
@@ -135,7 +159,7 @@ void main() {
 
       await _pumpReadyCamera(
         tester,
-        layout: PhotoLayout.cut2,
+        layout: PhotoLayout.pair2,
         timing: timing,
         states: states,
         captured: captured,
@@ -162,62 +186,118 @@ void main() {
       expect(states, contains(CameraSessionState.countdown));
       expect(states, contains(CameraSessionState.capturing));
       expect(states, contains(CameraSessionState.complete));
-      expect(captured, hasLength(PhotoLayout.cut2.photoCount));
+      expect(captured, hasLength(PhotoLayout.pair2.photoCount));
 
       // And the user landed on Review with the captured photos.
       expect(find.byType(ReviewScreen), findsOneWidget);
       expect(find.text('Review'), findsOneWidget);
     });
 
-    testWidgets('Retake re-arms the shutter for another session', (
+    testWidgets('an individual retake replaces one photo and keeps the rest', (
       tester,
     ) async {
       final TestTiming timing = TestTiming();
       final List<CameraSessionState> states = <CameraSessionState>[];
       final List<XFile> captured = <XFile>[];
 
-      await _pumpReadyCamera(
-        tester,
-        layout: PhotoLayout.cut2,
-        timing: timing,
-        states: states,
-        captured: captured,
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.theme,
+          home: ReviewScreen(
+            layout: PhotoLayout.korean4,
+            photos: <XFile>[
+              XFile('/tmp/a.jpg'),
+              XFile('/tmp/b.jpg'),
+              XFile('/tmp/c.jpg'),
+              XFile('/tmp/d.jpg'),
+            ],
+            // The retake camera is injected so the test controls capture.
+            retakeCameraBuilder: (BuildContext context, int index) =>
+                _fakeCameraScreen(
+                  layout: PhotoLayout.korean4,
+                  timing: timing,
+                  states: states,
+                  captured: captured,
+                  retakeIndex: index,
+                ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+
+      // The last photo is selected on arrival, so "Photo 4 of 4".
+      expect(find.textContaining('Photo 4 of 4 selected'), findsOneWidget);
+      expect(find.text('Replacing shot 4'), findsNothing);
+
+      // Select the second photo explicitly, then retake it.
+      // The 4-cut strip is very tall, so the thumbnail strip starts below the
+      // fold and has to be scrolled into view before it can be tapped.
+      final Finder secondThumbnail = find.byKey(
+        const ValueKey('review-thumbnail-1'),
+      );
+      await tester.ensureVisible(secondThumbnail);
+      await tester.pump();
+      await tester.tap(secondThumbnail);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        find.textContaining('Photo 2 of 4 selected'),
+        findsOneWidget,
+        reason: 'tapping a thumbnail must select that photo',
       );
 
-      await tester.tap(find.byKey(const ValueKey('shutter')));
-      await _runSession(
-        tester,
-        timing,
-        () => find.byType(ReviewScreen).evaluate().isNotEmpty,
-      );
-
-      // Retake returns to the camera, which must be usable again.
       await tester.tap(find.text('Retake'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
-      expect(find.byType(ReviewScreen), findsNothing);
 
-      final Finder shutter = find.byKey(const ValueKey('shutter'));
-      expect(shutter, findsOneWidget);
-      final InkWell tapTarget = tester.widget<InkWell>(
-        find.descendant(of: shutter, matching: find.byType(InkWell)),
-      );
-      expect(
-        tapTarget.onTap,
-        isNotNull,
-        reason: 'the shutter must be re-armed',
-      );
+      // A retake captures exactly ONE frame, not a whole session.
+      expect(find.byType(CameraScreen), findsOneWidget);
+      expect(find.text('Replacing shot 2'), findsOneWidget);
 
-      // A second session is possible.
-      states.clear();
       await tester.tap(find.byKey(const ValueKey('shutter')));
       await _runSession(
         tester,
         timing,
         () => find.byType(ReviewScreen).evaluate().isNotEmpty,
       );
-      expect(states, contains(CameraSessionState.complete));
-      expect(captured, hasLength(PhotoLayout.cut2.photoCount * 2));
+
+      // Exactly one new photo was captured.
+      expect(captured, hasLength(1));
+
+      // And we are back on Review with all four slots still populated.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(ReviewScreen), findsOneWidget);
+      expect(find.textContaining('Photo 2 of 4 selected'), findsOneWidget);
+      // Every slot is still populated after the replacement.
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('review-thumbnail-3')),
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('review-thumbnail-3')), findsOneWidget);
+    });
+
+    testWidgets('retake is a no-op when no photos have been captured', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.theme,
+          home: const ReviewScreen(
+            layout: PhotoLayout.pair2,
+            photos: <XFile>[],
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Nothing to replace, so Retake must not navigate to a camera.
+      await tester.tap(find.text('Retake'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(CameraScreen), findsNothing);
+      expect(find.byType(ReviewScreen), findsOneWidget);
     });
 
     testWidgets('capture timing is unchanged for the 2 CUT layout', (
@@ -229,7 +309,7 @@ void main() {
 
       await _pumpReadyCamera(
         tester,
-        layout: PhotoLayout.cut2,
+        layout: PhotoLayout.pair2,
         timing: timing,
         states: states,
         captured: captured,
@@ -265,7 +345,7 @@ void main() {
 
       await _pumpReadyCamera(
         tester,
-        layout: PhotoLayout.cut2,
+        layout: PhotoLayout.pair2,
         timing: timing,
         states: states,
         captured: captured,
@@ -299,7 +379,7 @@ void main() {
 
       await _pumpReadyCamera(
         tester,
-        layout: PhotoLayout.cut2,
+        layout: PhotoLayout.pair2,
         timing: timing,
         states: states,
       );
@@ -327,7 +407,7 @@ void main() {
         final TestTiming timing = TestTiming();
         await _pumpReadyCamera(
           tester,
-          layout: PhotoLayout.cut2,
+          layout: PhotoLayout.pair2,
           timing: timing,
           states: <CameraSessionState>[],
         );
@@ -341,13 +421,34 @@ void main() {
         expect(viewport.height, greaterThan(surface.height / 3));
         expect(viewport.width, greaterThan(0));
 
-        // The feed inside it is letterboxed, so assert it is usable rather
-        // than a fixed fraction of the screen.
+        // The feed must COVER the viewport: at least as large on both axes and
+        // exactly flush on one, so the overflow is cropped rather than
+        // letterboxed.
+        //
+        // This is the regression guard for the iPhone 16e defect where the
+        // viewfinder collapsed into a short 16:9 band with large black areas
+        // above and below.
         final Size feed = tester.getSize(find.byType(_FakePreview));
-        expect(feed.width, greaterThan(100));
-        expect(feed.height, greaterThan(60));
-        expect(feed.width, lessThanOrEqualTo(viewport.width));
-        expect(feed.height, lessThanOrEqualTo(viewport.height));
+        expect(
+          feed.width,
+          greaterThanOrEqualTo(viewport.width - 0.5),
+          reason: 'the feed must span at least the full viewport width',
+        );
+        expect(
+          feed.height,
+          greaterThanOrEqualTo(viewport.height - 0.5),
+          reason:
+              'the feed must span at least the full viewport height; a '
+              'shorter feed is the letterboxed band reported on iOS Safari',
+        );
+        // Exactly one axis is flush; the other overflows and is cropped.
+        final bool flushWidth = (feed.width - viewport.width).abs() < 0.5;
+        final bool flushHeight = (feed.height - viewport.height).abs() < 0.5;
+        expect(
+          flushWidth || flushHeight,
+          isTrue,
+          reason: 'a cover fit must be flush on at least one axis',
+        );
 
         // The control bar must stay compact, not swallow the screen.
         final Size shutter = tester.getSize(
@@ -361,7 +462,7 @@ void main() {
       final TestTiming timing = TestTiming();
       await _pumpReadyCamera(
         tester,
-        layout: PhotoLayout.cut2,
+        layout: PhotoLayout.pair2,
         timing: timing,
         states: <CameraSessionState>[],
       );
@@ -395,14 +496,14 @@ void main() {
       final TestTiming timing = TestTiming();
       await _pumpReadyCamera(
         tester,
-        layout: PhotoLayout.cut2,
+        layout: PhotoLayout.pair2,
         timing: timing,
         states: <CameraSessionState>[],
       );
 
-      // CameraPreview supplies its own aspect ratio internally, so the screen
-      // must hand it a real, non-degenerate box: a collapsed or NaN box is
-      // exactly what leaves the texture unpainted (a blank white preview).
+      // The screen must hand the feed a real, non-degenerate box: a collapsed or
+      // NaN box is exactly what leaves the texture unpainted (a blank white
+      // preview).
       final Size viewport = tester.getSize(
         find.byKey(const ValueKey('camera-viewport')),
       );
@@ -412,13 +513,31 @@ void main() {
       expect(feed.width, greaterThan(0));
       expect(feed.height, greaterThan(0));
       expect(feed.width / feed.height, isNot(isNaN));
-      // The feed is letterboxed inside the viewport, never larger than it.
-      expect(feed.width, lessThanOrEqualTo(viewport.width));
-      expect(feed.height, lessThanOrEqualTo(viewport.height));
-      // And it keeps the controller's own aspect ratio rather than being
-      // stretched to the box: the plugin reports 1920/1080 for this feed once
-      // the portrait orientation is applied.
-      expect(feed.width / feed.height, closeTo(1920 / 1080, 0.02));
+
+      // Cover-fitted: at least as large as the viewport on both axes, and flush
+      // on exactly one of them.
+      expect(feed.width, greaterThanOrEqualTo(viewport.width - 0.5));
+      expect(feed.height, greaterThanOrEqualTo(viewport.height - 0.5));
+      expect(
+        (feed.width - viewport.width).abs() < 0.5 ||
+            (feed.height - viewport.height).abs() < 0.5,
+        isTrue,
+        reason: 'a cover fit must be flush on at least one axis',
+      );
+
+      // The feed keeps the UPRIGHT aspect of the stream, not the raw
+      // dimensions the plugin reports. The fake controller reports 1920x1080,
+      // so an upright portrait frame is 1080/1920 = 0.5625.
+      //
+      // The old implementation produced 1920/1080 = 1.778 here, which is the
+      // narrow horizontal band reported on the iPhone 16e.
+      expect(
+        feed.width / feed.height,
+        closeTo(1080 / 1920, 0.02),
+        reason:
+            'the viewfinder must present the upright portrait frame; a 16:9 '
+            'band means the device-orientation heuristic is back',
+      );
     });
 
     testWidgets('switching cameras rebuilds the preview subtree', (
@@ -427,7 +546,7 @@ void main() {
       final TestTiming timing = TestTiming();
       final _FakeCameraController first = await _pumpReadyCamera(
         tester,
-        layout: PhotoLayout.cut2,
+        layout: PhotoLayout.pair2,
         timing: timing,
         states: <CameraSessionState>[],
       );
@@ -455,7 +574,7 @@ void main() {
 
       await _pumpReadyCamera(
         tester,
-        layout: PhotoLayout.cut2,
+        layout: PhotoLayout.pair2,
         timing: timing,
         states: states,
         captured: <XFile>[],

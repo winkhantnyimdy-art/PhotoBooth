@@ -1,0 +1,37 @@
+{
+  "project": "PhotoBooth Premium \u2014 Retro Film Pop (A+C+F)",
+  "status": "visual targets, not measured source UI tokens",
+  "colors": {
+    "background_cream": "#FFF7F0",
+    "paper": "#FFFDF8",
+    "pink_primary": "#FF6696",
+    "pink_light": "#FFD8E5",
+    "ink": "#201C20",
+    "dark_surface": "#151416",
+    "gold_accent": "#F6C66A",
+    "cherry_red": "#DC3F54"
+  },
+  "type": {
+    "display": "original custom bubble wordmark (draw/vectorize, not generic text)",
+    "body": "rounded legible sans-serif",
+    "handwriting": "licensed handwritten accent font or original vector lettering"
+  },
+  "screen_targets": {
+    "home": "warm paper with photo collage and bright CTA",
+    "camera": "near-black immersive camera and pink shutter",
+    "review": "dark photo grid and retake/next",
+    "decorate": "dark workspace, compact tabs, genuine filter thumbnails and slider",
+    "export": "dark premium save/share with photo-strip focus"
+  },
+  "responsive_widths_dp": [
+    320,
+    375,
+    390,
+    430
+  ],
+  "notes": [
+    "Color values are proposed approximations from a generated raster, not extracted exact source design values.",
+    "Use image reference for art direction; validate against actual emulator screenshots.",
+    "No third-party portrait likeness assets from the mockup are supplied for shipping. Use user-captured photos or licensed demo content."
+  ]
+}

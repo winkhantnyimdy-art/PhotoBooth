@@ -91,7 +91,7 @@ void main() {
         MaterialApp(
           theme: AppTheme.theme,
           home: CameraScreen(
-            layout: PhotoLayout.cut4,
+            layout: PhotoLayout.grid4,
             cameraProvider: () async => pending.future,
           ),
         ),
@@ -105,7 +105,7 @@ void main() {
         MaterialApp(
           theme: AppTheme.theme,
           home: CameraScreen(
-            layout: PhotoLayout.cut4,
+            layout: PhotoLayout.grid4,
             cameraProvider: () async => <CameraDescription>[],
           ),
         ),
@@ -121,7 +121,7 @@ void main() {
         MaterialApp(
           theme: AppTheme.theme,
           home: CameraScreen(
-            layout: PhotoLayout.cut4,
+            layout: PhotoLayout.grid4,
             cameraProvider: () async => throw Exception('boom'),
           ),
         ),
@@ -136,7 +136,7 @@ void main() {
         MaterialApp(
           theme: AppTheme.theme,
           home: CameraScreen(
-            layout: PhotoLayout.cut2,
+            layout: PhotoLayout.pair2,
             cameraProvider: () async => <CameraDescription>[],
           ),
         ),

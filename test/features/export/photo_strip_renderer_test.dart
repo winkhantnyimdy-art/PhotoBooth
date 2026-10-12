@@ -23,41 +23,52 @@ List<int> _pngSize(Uint8List bytes) {
 
 void main() {
   final DecorationState cleanCream = const DecorationState(
-    layout: PhotoLayout.cut4,
+    layout: PhotoLayout.grid4,
     background: BackgroundChoice.cream,
     style: DecorativeStyle.clean,
   );
 
   group('PhotoStripGeometry', () {
-    test('4 CUT is a 2x2 grid of four photos', () {
-      expect(PhotoLayout.cut4.cols, 2);
-      expect(PhotoLayout.cut4.rows, 2);
-      expect(PhotoLayout.cut4.photoCount, 4);
+    test('Korean 4-cut is the default and stacks four portrait frames', () {
+      expect(kDefaultPhotoLayout, PhotoLayout.korean4);
+      expect(PhotoLayout.korean4.cols, 1);
+      expect(PhotoLayout.korean4.rows, 4);
+      expect(PhotoLayout.korean4.photoCount, 4);
     });
 
-    test('2 CUT is a 2x1 grid of two photos', () {
-      expect(PhotoLayout.cut2.cols, 2);
-      expect(PhotoLayout.cut2.rows, 1);
-      expect(PhotoLayout.cut2.photoCount, 2);
+    test('the 2x2 grid arranges four photos in two columns', () {
+      expect(PhotoLayout.grid4.cols, 2);
+      expect(PhotoLayout.grid4.rows, 2);
+      expect(PhotoLayout.grid4.photoCount, 4);
     });
 
-    test('the two layouts produce different arrangements', () {
-      // Guards against two options collapsing into the same arrangement.
-      final String cut4 = PhotoLayout.cut4.description;
-      final String cut2 = PhotoLayout.cut2.description;
-      expect(cut4, isNot(cut2));
+    test('the two-photo layout stacks two portrait frames', () {
+      expect(PhotoLayout.pair2.cols, 1);
+      expect(PhotoLayout.pair2.rows, 2);
+      expect(PhotoLayout.pair2.photoCount, 2);
+    });
+
+    test('the two four-photo layouts produce different arrangements', () {
+      // Guards against the two options collapsing into the same arrangement.
       expect(
-        PhotoLayout.cut4.contentSignature,
-        isNot(PhotoLayout.cut2.contentSignature),
+        PhotoLayout.korean4.contentSignature,
+        isNot(PhotoLayout.grid4.contentSignature),
       );
+      expect(
+        PhotoLayout.korean4.description,
+        isNot(PhotoLayout.grid4.description),
+      );
+      expect(PhotoLayout.korean4.isColumnStack, isTrue);
+      expect(PhotoLayout.grid4.isColumnStack, isFalse);
     });
 
-    test('photo cells are square, so captures are not stretched', () {
+    test('photo cells are 3:4 portrait, so captures are not stretched', () {
       for (final PhotoLayout layout in PhotoLayout.values) {
         expect(
-          PhotoStripGeometry.cellWidth(layout),
-          closeTo(PhotoStripGeometry.cellHeight(layout), 0.001),
-          reason: '${layout.label} cells must be square',
+          PhotoStripGeometry.cellWidth(layout) /
+              PhotoStripGeometry.cellHeight(layout),
+          closeTo(3 / 4, 0.001),
+          reason: '${layout.label} cells must be 3:4 portrait',
         );
       }
     });
@@ -134,8 +145,8 @@ void main() {
         );
         // A preview cell of N logical px must use N * ratio as its gap, so the
         // on-screen gap scales to the exported gutter. This has to be derived
-        // per layout: a 2 column layout has a 576 export px cell while the
-        // single column 3 CUT has 1168.
+        // per layout: a 2 column layout has a much narrower export cell than a
+        // single column stack, so the ratio differs per layout.
         const double cell = 100;
         expect(
           cell * PhotoStripGeometry.gutterRatio(layout),
@@ -155,7 +166,7 @@ void main() {
       );
       expect(
         PhotoStripGeometry.stickerSize,
-        lessThan(PhotoStripGeometry.cellWidth(PhotoLayout.cut4)),
+        lessThan(PhotoStripGeometry.cellWidth(PhotoLayout.grid4)),
       );
     });
   });
@@ -178,7 +189,7 @@ void main() {
     test('export width is fixed regardless of layout', () async {
       final Uint8List cut4 = await renderWith(cleanCream);
       final Uint8List cut2 = await renderWith(
-        cleanCream.copyWith(layout: PhotoLayout.cut2),
+        cleanCream.copyWith(layout: PhotoLayout.pair2),
       );
 
       expect(PhotoStripRenderer.exportWidth, 1200.0);
@@ -206,23 +217,45 @@ void main() {
       }
     });
 
-    test('4 CUT is taller than 2 CUT by the fixed footer', () async {
-      final List<int> cut4 = _pngSize(await renderWith(cleanCream));
-      final List<int> cut2 = _pngSize(
-        await renderWith(cleanCream.copyWith(layout: PhotoLayout.cut2)),
+    test('the two-photo column stack is taller than the 2x2 grid', () async {
+      final List<int> grid4 = _pngSize(await renderWith(cleanCream));
+      final List<int> pair2 = _pngSize(
+        await renderWith(cleanCream.copyWith(layout: PhotoLayout.pair2)),
       );
 
+      // Every canvas is the grid plus the same fixed branding footer, so
+      // subtracting it must yield each layout's content height. The canvas is
+      // rounded to whole pixels, so allow the 1px that rounding can shift.
       final int footer = PhotoStripRenderer.footerHeight.round();
-      expect(cut4[1] - footer, 1200);
-      expect(cut2[1] - footer, 608);
-      expect(cut4[1], greaterThan(cut2[1]));
+      expect(
+        grid4[1] - footer,
+        closeTo(PhotoStripGeometry.contentHeight(PhotoLayout.grid4), 1.0),
+      );
+      expect(
+        pair2[1] - footer,
+        closeTo(PhotoStripGeometry.contentHeight(PhotoLayout.pair2), 1.0),
+      );
+      expect(pair2[1], greaterThan(grid4[1]));
     });
 
-    test('renders non-empty PNG bytes', () async {
+    test('the Korean column stack is taller than the 2x2 grid', () {
+      // A single column of four portrait frames is the tallest strip.
+      expect(
+        PhotoStripGeometry.totalHeight(PhotoLayout.korean4),
+        greaterThan(PhotoStripGeometry.totalHeight(PhotoLayout.grid4)),
+      );
+    });
+
+    test('renders non-empty PNG bytes at the geometry-derived canvas size', () async {
       final Uint8List bytes = await renderWith(cleanCream);
 
       expect(bytes, isNotEmpty);
-      expect(_pngSize(bytes), <int>[1200, 1350]);
+      // Derived, not hardcoded: the canvas size is a consequence of the layout
+      // (2x2 grid) and the portrait 3:4 cell shape.
+      expect(_pngSize(bytes), <int>[
+        PhotoStripGeometry.exportWidth.toInt(),
+        PhotoStripGeometry.totalHeight(PhotoLayout.grid4).round(),
+      ]);
     });
 
     test('identical inputs produce identical output', () async {
@@ -317,12 +350,15 @@ void main() {
     test('renders when fewer photos than grid cells are provided', () async {
       // cut4 expects four cells; an empty session must not break the bounds.
       final Uint8List bytes = await renderer.render(
-        layout: PhotoLayout.cut4,
+        layout: PhotoLayout.grid4,
         photos: const <XFile>[],
         decorationState: cleanCream,
       );
 
-      expect(_pngSize(bytes), <int>[1200, 1350]);
+      expect(_pngSize(bytes), <int>[
+        PhotoStripGeometry.exportWidth.toInt(),
+        PhotoStripGeometry.totalHeight(PhotoLayout.grid4).round(),
+      ]);
     });
 
     test('rendered geometry is independent of the decoration style', () async {

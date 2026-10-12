@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,19 +6,14 @@ import 'package:photo_booth/core/theme/app_theme.dart';
 import 'package:photo_booth/features/decorate/decoration_model.dart';
 import 'package:photo_booth/features/decorate/decorate_screen.dart';
 import 'package:photo_booth/features/export/export_screen.dart';
-import 'package:photo_booth/features/export/export_service.dart';
 import 'package:photo_booth/features/export/photo_strip_renderer.dart';
 import 'package:photo_booth/features/home/home_screen.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
 import 'package:photo_booth/features/review/review_screen.dart';
 
-class _FakeExportService implements ExportService {
-  @override
-  Future<void> saveToGallery(Uint8List bytes, String fileName) async {}
+import '../support/fake_export_service.dart';
 
-  @override
-  Future<void> shareImage(Uint8List bytes, String fileName) async {}
-}
+class _FakeExportService extends RecordingExportService {}
 
 /// A transient profile: a small, short screen that is easy to break.
 const Size _small = Size(320, 480);
@@ -46,7 +39,7 @@ Future<void> _settleRender(WidgetTester tester) async {
 }
 
 const DecorationState _cleanCream = DecorationState(
-  layout: PhotoLayout.cut4,
+  layout: PhotoLayout.grid4,
   background: BackgroundChoice.cream,
   style: DecorativeStyle.clean,
 );
@@ -70,7 +63,7 @@ void main() {
     testWidgets('Review keeps both actions reachable', (tester) async {
       _useSurface(tester, _small);
       await tester.pumpWidget(
-        _app(const ReviewScreen(layout: PhotoLayout.cut4, photos: <XFile>[])),
+        _app(const ReviewScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
       );
       await tester.pumpAndSettle();
 
@@ -87,7 +80,7 @@ void main() {
     testWidgets('Decorate renders and keeps export reachable', (tester) async {
       _useSurface(tester, _small);
       await tester.pumpWidget(
-        _app(const DecorateScreen(layout: PhotoLayout.cut4, photos: <XFile>[])),
+        _app(const DecorateScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
       );
       await tester.pumpAndSettle();
 
@@ -107,7 +100,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           ExportScreen(
-            layout: PhotoLayout.cut4,
+            layout: PhotoLayout.grid4,
             photos: const <XFile>[],
             decorationState: _cleanCream,
             exportService: _FakeExportService(),
@@ -156,7 +149,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           ExportScreen(
-            layout: PhotoLayout.cut4,
+            layout: PhotoLayout.grid4,
             photos: const <XFile>[],
             decorationState: _cleanCream,
             exportService: _FakeExportService(),
@@ -177,7 +170,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           ExportScreen(
-            layout: PhotoLayout.cut4,
+            layout: PhotoLayout.grid4,
             photos: const <XFile>[],
             decorationState: _cleanCream,
             exportService: _FakeExportService(),
@@ -223,7 +216,7 @@ void main() {
         MaterialApp(
           theme: AppTheme.theme,
           home: ExportScreen(
-            layout: PhotoLayout.cut4,
+            layout: PhotoLayout.grid4,
             photos: const <XFile>[],
             decorationState: _cleanCream,
             exportService: _FakeExportService(),

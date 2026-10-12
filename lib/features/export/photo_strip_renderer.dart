@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -9,7 +8,12 @@ import 'package:camera/camera.dart';
 
 import '../../core/art/frame_decorations.dart';
 import '../../core/art/sticker_artwork.dart';
+import '../../core/art/text_overlay.dart';
+import '../../core/filters/film_grain.dart';
+import '../../core/filters/photo_filter.dart';
+import '../../core/media/photo_source.dart';
 import '../../core/theme/app_colors.dart';
+import '../camera/camera_geometry.dart';
 import '../home/layout_geometry.dart';
 import '../home/layout_model.dart';
 import '../decorate/decoration_model.dart';
@@ -46,72 +50,141 @@ class PhotoStripRenderer {
     final ui.PictureRecorder recorder = ui.PictureRecorder();
     final ui.Canvas canvas = ui.Canvas(recorder);
 
-    // 1. Frame background
-    final ui.Paint bgPaint = ui.Paint()
-      ..color = decorationState.background.color;
-    canvas.drawRect(ui.Rect.fromLTWH(0, 0, exportWidth, height), bgPaint);
+    // Decoded photos are owned by the recorded picture until it has been
+    // rasterised. Releasing them any earlier makes CanvasKit draw blank cells,
+    // so they are collected here and freed at the very end.
+    final List<ui.Image> decodedPhotos = <ui.Image>[];
 
-    // 2. Navy dashed paper edge — the Retro Pop "sticker sheet" signature.
-    _drawDashedFrame(canvas, ui.Size(exportWidth, height), onDark);
+    try {
+      // 1. Frame background
+      final ui.Paint bgPaint = ui.Paint()
+        ..color = decorationState.background.color;
+      canvas.drawRect(ui.Rect.fromLTWH(0, 0, exportWidth, height), bgPaint);
 
-    // 3. Photo cells, row-major in capture order.
-    for (int i = 0; i < photos.length; i++) {
-      if (i >= layout.photoCount) break;
-      final ui.Rect cell = PhotoStripGeometry.cellRect(layout, i);
-      final ui.Image image = await _decodeImage(
-        photos[i].path,
-        cell.width.round(),
-        cell.height.round(),
-      );
-      _drawFramedImage(canvas, image, cell);
-      image.dispose();
-    }
-
-    // 4. Decorative style overlay across the grid area.
-    if (decorationState.style != DecorativeStyle.clean) {
-      _renderStyleOverlay(
+      // 2. Paper edge — the chosen frame treatment.
+      FrameDecorations.paintFrame(
         canvas,
-        decorationState.style,
+        ui.Rect.fromLTWH(0, 0, exportWidth, height),
+        decorationState.frameStyle,
+      );
+
+      // The colour matrix shared by the preview and this export. Identity when
+      // the user is on Original at 0 strength, which skips the filter entirely.
+      final List<double> matrix = buildMatrix(
+        decorationState.filter,
+        decorationState.filterIntensity,
+        decorationState.adjustments,
+      );
+      final ui.ColorFilter? colorFilter = isIdentityMatrix(matrix)
+          ? null
+          : ui.ColorFilter.matrix(matrix);
+
+      // 3. Photo cells, row-major in capture order.
+      for (int i = 0; i < photos.length; i++) {
+        if (i >= layout.photoCount) break;
+        final ui.Rect cell = PhotoStripGeometry.cellRect(layout, i);
+        final ui.Image image = await _decodeImage(
+          photos[i],
+          // 2x the cell width keeps the strip crisp on a retina export
+          // without decoding four full-resolution camera frames.
+          (cell.width * 2).round().clamp(1, 4096),
+        );
+        decodedPhotos.add(image);
+        _drawFramedImage(canvas, image, cell, colorFilter);
+      }
+
+    // 3b. Film grain sits over the photos only, inside the frame border.
+    if (decorationState.filter.hasGrain &&
+          decorationState.filterIntensity > 0) {
+        final ui.Rect content = ui.Rect.fromLTWH(
+          PhotoStripGeometry.outerPadding,
+          PhotoStripGeometry.outerPadding,
+          exportWidth - (PhotoStripGeometry.outerPadding * 2),
+          gridHeight - (PhotoStripGeometry.outerPadding * 2),
+        );
+        FilmGrain.paint(
+          canvas,
+          content,
+          decorationState.filterIntensity,
+          seed: exportWidth.toInt(),
+        );
+      }
+
+      // 4. Decorative style overlay across the grid area.
+      if (decorationState.style != DecorativeStyle.clean) {
+        _renderStyleOverlay(
+          canvas,
+          decorationState.style,
+          onDark,
+          ui.Rect.fromLTWH(0, 0, exportWidth, gridHeight),
+        );
+      }
+
+      // 5. Stickers — normalised coordinates map onto the grid area, matching
+      // the Decorate preview exactly. Artwork is shared via StickerArtwork.
+      for (final sticker in decorationState.stickers) {
+        _renderSticker(
+          canvas,
+          sticker.type,
+          ui.Offset(sticker.x * exportWidth, sticker.y * gridHeight),
+          PhotoStripGeometry.stickerSize,
+        );
+      }
+
+      // 5b. User captions, drawn with the same routine as the live preview.
+      for (final TextPlacement text in decorationState.texts) {
+        TextOverlayRenderer.paint(
+          canvas,
+          text,
+          ui.Size(exportWidth, height),
+        );
+      }
+
+      // 6. Branding footer with optional date.
+      _renderBranding(
+        canvas,
+        ui.Rect.fromLTWH(0, gridHeight, exportWidth, footerHeight),
+        decorationState,
         onDark,
-        ui.Rect.fromLTWH(0, 0, exportWidth, gridHeight),
       );
-    }
 
-    // 5. Stickers — normalised coordinates map onto the grid area, matching
-    // the Decorate preview exactly. Artwork is shared via StickerArtwork.
-    for (final sticker in decorationState.stickers) {
-      _renderSticker(
-        canvas,
-        sticker.type,
-        ui.Offset(sticker.x * exportWidth, sticker.y * gridHeight),
-        PhotoStripGeometry.stickerSize,
+      final ui.Picture picture = recorder.endRecording();
+      final ui.Image img = await picture.toImage(
+        exportWidth.toInt(),
+        height.toInt(),
       );
+      picture.dispose();
+      final ByteData? byteData = await img.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      img.dispose();
+      if (byteData == null) throw Exception('Failed to encode image to PNG');
+
+      return byteData.buffer.asUint8List();
+    } finally {
+      // Only safe now that the picture has been rasterised.
+      for (final ui.Image image in decodedPhotos) {
+        image.dispose();
+      }
     }
-
-    // 6. Branding footer with optional date.
-    _renderBranding(
-      canvas,
-      ui.Rect.fromLTWH(0, gridHeight, exportWidth, footerHeight),
-      decorationState,
-      onDark,
-    );
-
-    final ui.Picture picture = recorder.endRecording();
-    final ui.Image img = await picture.toImage(
-      exportWidth.toInt(),
-      height.toInt(),
-    );
-    final ByteData? byteData = await img.toByteData(
-      format: ui.ImageByteFormat.png,
-    );
-    img.dispose();
-    if (byteData == null) throw Exception('Failed to encode image to PNG');
-
-    return byteData.buffer.asUint8List();
   }
 
-  /// Draws one photo with a subtle white rim so frames read as prints.
-  void _drawFramedImage(ui.Canvas canvas, ui.Image image, ui.Rect cell) {
+  /// Draws one photo into its cell with a **cover** crop.
+  ///
+  /// The previous implementation stretched the whole photo into the cell, which
+  /// squashed faces whenever the cell shape and the camera frame disagreed.
+  /// Now the cell's aspect and the photo's own aspect decide the crop through
+  /// [CameraGeometry.coverRect] - the same maths the live viewfinder uses, so
+  /// the framing the user saw is the framing that is exported.
+  ///
+  /// [colorFilter], when provided, is the shared preset/strength matrix, so the
+  /// exported pixels match the previewed pixels exactly.
+  void _drawFramedImage(
+    ui.Canvas canvas,
+    ui.Image image,
+    ui.Rect cell, [
+    ui.ColorFilter? colorFilter,
+  ]) {
     final double radius = 10;
     final ui.RRect target = ui.RRect.fromRectAndRadius(
       cell,
@@ -122,31 +195,59 @@ class PhotoStripRenderer {
       target.inflate(3),
       ui.Paint()..color = AppColors.surface.withValues(alpha: 0.9),
     );
+
+    final ui.Rect source = CameraGeometry.sourceRectForCover(
+      source: Size(image.width.toDouble(), image.height.toDouble()),
+      target: cell.size,
+    );
+
     canvas.save();
     canvas.clipRRect(target);
     canvas.drawImageRect(
       image,
-      ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      source,
       cell,
-      ui.Paint()..filterQuality = ui.FilterQuality.medium,
+      ui.Paint()
+        ..filterQuality = ui.FilterQuality.medium
+        ..colorFilter = colorFilter,
     );
     canvas.restore();
   }
 
-  Future<ui.Image> _decodeImage(
-    String path,
-    int targetWidth,
-    int targetHeight,
-  ) async {
-    final Uint8List bytes = await File(path).readAsBytes();
-    final ui.Codec codec = await ui.instantiateImageCodec(
+  /// Decodes one captured photo into a [ui.Image], preserving its own aspect.
+  ///
+  /// Only `targetWidth` is supplied: the codec derives the height from the real
+  /// aspect. Passing both dimensions - as the old code did - forced the frame
+  /// into the cell's shape *before* the cover crop ran, which is exactly how
+  /// faces got stretched. Decoding wide enough for the cell (2x for retina)
+  /// keeps quality high without decoding four full-resolution frames.
+  ///
+  /// Uses [ui.instantiateImageCodecFromBuffer] rather than the older
+  /// [ui.instantiateImageCodec]. This is load-bearing on the web: the
+  /// byte-array overload does not decode reliably there and silently yields
+  /// blank frames. The buffer overload is the same entry point the image
+  /// pipeline uses on every platform.
+  ///
+  /// Nothing here touches `PaintingBinding`, so the renderer remains usable from
+  /// a plain `test()` with no widget binding.
+  Future<ui.Image> _decodeImage(XFile photo, int targetWidth) async {
+    // Works on Android/iOS (file read) and on the web (blob re-hydration).
+    final Uint8List bytes = await readPhotoBytes(photo);
+    // The codec takes ownership of the buffer and releases it on dispose, so
+    // the buffer is deliberately not disposed here.
+    final ui.ImmutableBuffer buffer = await ui.ImmutableBuffer.fromUint8List(
       bytes,
-      targetWidth: targetWidth,
-      targetHeight: targetHeight,
     );
-    final ui.FrameInfo frame = await codec.getNextFrame();
-    codec.dispose();
-    return frame.image;
+    final ui.Codec codec = await ui.instantiateImageCodecFromBuffer(
+      buffer,
+      targetWidth: targetWidth,
+    );
+    try {
+      final ui.FrameInfo frame = await codec.getNextFrame();
+      return frame.image;
+    } finally {
+      codec.dispose();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -289,19 +390,7 @@ class PhotoStripRenderer {
     StickerArtwork.paintSticker(canvas, type, center, size);
   }
 
-  /// Retro Pop paper edge: a pink border with white polka dots, exactly the
-  /// sticker sheet treatment in the reference.
-  void _drawDashedFrame(ui.Canvas canvas, ui.Size size, bool onDark) {
-    FrameDecorations.paintPolkaDotFrame(
-      canvas,
-      ui.Rect.fromLTWH(0, 0, size.width, size.height),
-      borderWidth: 16,
-      dotSpacing: 28,
-      dotRadius: 5,
-    );
-  }
-
-
+  /// Retro Pop paper edge is now style-selectable; see [FrameDecorations].
   // ---------------------------------------------------------------------------
   // Branding footer
   // ---------------------------------------------------------------------------

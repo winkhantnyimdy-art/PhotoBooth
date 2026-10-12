@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/filters/photo_filter.dart';
 import '../home/layout_model.dart';
 
 /// Formats the stamped date used by the composition footer.
@@ -26,6 +27,11 @@ class DecorationState {
     required this.style,
     this.showDate = false,
     this.stickers = const [],
+    this.texts = const [],
+    this.filter = PhotoFilterType.original,
+    this.filterIntensity = 1.0,
+    this.frameStyle = FrameStyle.polkaDot,
+    this.adjustments = const PhotoAdjustments(),
     this.dateOverride, // for testability
   });
 
@@ -44,6 +50,21 @@ class DecorationState {
   /// User-placed stickers in the composition.
   final List<StickerPlacement> stickers;
 
+  /// Free text lines the user has placed on the strip.
+  final List<TextPlacement> texts;
+
+  /// The chosen colour preset applied to every photo.
+  final PhotoFilterType filter;
+
+  /// How strongly [filter] is applied, 0 (none) … 1 (full).
+  final double filterIntensity;
+
+  /// The paper/border treatment around the strip.
+  final FrameStyle frameStyle;
+
+  /// Manual brightness/contrast/saturation/warmth tweaks.
+  final PhotoAdjustments adjustments;
+
   /// Optional fixed date for testing (uses local session date if null).
   final DateTime? dateOverride;
 
@@ -57,6 +78,11 @@ class DecorationState {
     DecorativeStyle? style,
     bool? showDate,
     List<StickerPlacement>? stickers,
+    List<TextPlacement>? texts,
+    PhotoFilterType? filter,
+    double? filterIntensity,
+    FrameStyle? frameStyle,
+    PhotoAdjustments? adjustments,
     DateTime? dateOverride,
   }) {
     return DecorationState(
@@ -65,9 +91,26 @@ class DecorationState {
       style: style ?? this.style,
       showDate: showDate ?? this.showDate,
       stickers: stickers ?? this.stickers,
+      texts: texts ?? this.texts,
+      filter: filter ?? this.filter,
+      filterIntensity: filterIntensity ?? this.filterIntensity,
+      frameStyle: frameStyle ?? this.frameStyle,
+      adjustments: adjustments ?? this.adjustments,
       dateOverride: dateOverride ?? this.dateOverride,
     );
   }
+}
+
+/// The paper/border treatment that frames the whole strip.
+enum FrameStyle {
+  polkaDot('Polka Dot'),
+  filmEdge('Film Edge'),
+  scallop('Scallop'),
+  minimal('Minimal');
+
+  const FrameStyle(this.label);
+
+  final String label;
 }
 
 /// Background/frame color choices for the photo strip.
@@ -128,6 +171,66 @@ class StickerPlacement {
       y: y ?? this.y,
     );
   }
+}
+
+/// A free-text caption placed on the strip.
+///
+/// Position is normalised (0…1) against the whole strip so the same text lands
+/// in the same place on the Decorate preview and the exported PNG. [scale] is
+/// the font size expressed as a fraction of the strip width, which keeps the
+/// text proportional at every preview size.
+class TextPlacement {
+  const TextPlacement({
+    required this.text,
+    required this.x,
+    required this.y,
+    this.color = Colors.white,
+    this.scale = 0.07,
+  });
+
+  /// The caption itself.
+  final String text;
+
+  /// Horizontal position (0 = left, 1 = right), centre-anchored.
+  final double x;
+
+  /// Vertical position (0 = top, 1 = bottom), centre-anchored.
+  final double y;
+
+  /// Fill colour of the text.
+  final Color color;
+
+  /// Font size as a fraction of the strip width.
+  final double scale;
+
+  /// Creates a copy with the given fields replaced.
+  TextPlacement copyWith({
+    String? text,
+    double? x,
+    double? y,
+    Color? color,
+    double? scale,
+  }) {
+    return TextPlacement(
+      text: text ?? this.text,
+      x: x ?? this.x,
+      y: y ?? this.y,
+      color: color ?? this.color,
+      scale: scale ?? this.scale,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is TextPlacement &&
+      other.text == text &&
+      other.x == x &&
+      other.y == y &&
+      other.color == color &&
+      other.scale == scale;
+
+  @override
+  int get hashCode => Object.hash(text, x, y, color, scale);
 }
 
 enum StickerType {

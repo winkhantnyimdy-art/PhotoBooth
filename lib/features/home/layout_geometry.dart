@@ -26,10 +26,11 @@ abstract final class PhotoStripGeometry {
 
   /// Intended shape of a single photo cell (width / height).
   ///
-  /// CUT layouts are square, matching the printed-strip convention and the
-  /// previews. Because the renderer decodes each photo directly into the cell
-  /// rect, this ratio is also what keeps captured photos undistorted.
-  static const double cellAspect = 1.0;
+  /// Cell shape now comes from the layout itself (3:4 portrait) rather than a
+  /// hard-coded square, so a Korean 4-cut shows tall portrait frames instead of
+  /// squashed ones. Because the renderer cover-crops each decoded photo into the
+  /// cell, this ratio also keeps captured faces undistorted.
+  static double cellAspect(PhotoLayout layout) => layout.cellAspect;
 
   /// Nominal sticker diameter in export pixels.
   ///
@@ -49,7 +50,7 @@ abstract final class PhotoStripGeometry {
 
   /// Height of one photo cell.
   static double cellHeight(PhotoLayout layout) =>
-      cellWidth(layout) / cellAspect;
+      cellWidth(layout) / cellAspect(layout);
 
   /// Height of the photo grid, excluding the branding footer.
   static double contentHeight(PhotoLayout layout) {

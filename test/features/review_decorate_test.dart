@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:photo_booth/core/theme/app_theme.dart';
 import 'package:photo_booth/features/decorate/decoration_model.dart';
+import 'package:photo_booth/features/camera/camera_screen.dart';
 import 'package:photo_booth/features/decorate/decorate_screen.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
 import 'package:photo_booth/features/review/review_screen.dart';
@@ -14,7 +15,7 @@ void main() {
   group('ReviewScreen', () {
     testWidgets('presents the photos and both actions', (tester) async {
       await tester.pumpWidget(
-        _app(const ReviewScreen(layout: PhotoLayout.cut4, photos: <XFile>[])),
+        _app(const ReviewScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
       );
       await tester.pumpAndSettle();
 
@@ -30,7 +31,7 @@ void main() {
 
     testWidgets('Continue navigates to the decoration studio', (tester) async {
       await tester.pumpWidget(
-        _app(const ReviewScreen(layout: PhotoLayout.cut4, photos: <XFile>[])),
+        _app(const ReviewScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
       );
       await tester.pumpAndSettle();
 
@@ -42,7 +43,9 @@ void main() {
       expect(find.textContaining('Finish & Save'), findsOneWidget);
     });
 
-    testWidgets('Retake returns to the previous screen', (tester) async {
+    testWidgets('Retake opens the camera for a single-photo replacement', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _app(
           Builder(
@@ -50,9 +53,12 @@ void main() {
               body: TextButton(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => const ReviewScreen(
-                      layout: PhotoLayout.cut2,
-                      photos: <XFile>[],
+                    builder: (_) => ReviewScreen(
+                      layout: PhotoLayout.pair2,
+                      photos: <XFile>[
+                        XFile('/tmp/shot_1.jpg'),
+                        XFile('/tmp/shot_2.jpg'),
+                      ],
                     ),
                   ),
                 ),
@@ -67,12 +73,28 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       expect(find.text('Retake'), findsOneWidget);
 
+      // Retake now navigates to the camera so a single frame can be replaced,
+      // rather than discarding the whole session.
       await tester.tap(find.text('Retake'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
 
-      expect(find.text('Go to Review'), findsOneWidget);
-      expect(find.text('Retake'), findsNothing);
+      expect(find.byType(CameraScreen), findsOneWidget);
+      // The original screen is still underneath, so nothing is lost.
+      expect(find.text('Go to Review'), findsNothing);
+    });
+
+    testWidgets('Review announces which photo is selected for retake', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(const ReviewScreen(layout: PhotoLayout.pair2, photos: <XFile>[])),
+      );
+      await tester.pump();
+
+      // With no photos the caption must say so rather than claiming a
+      // selection that does not exist.
+      expect(find.text('No photos yet'), findsOneWidget);
     });
 
     for (final double width in <double>[320, 430]) {
@@ -82,7 +104,7 @@ void main() {
         addTearDown(tester.view.reset);
 
         await tester.pumpWidget(
-          _app(const ReviewScreen(layout: PhotoLayout.cut4, photos: <XFile>[])),
+          _app(const ReviewScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
         );
         await tester.pumpAndSettle();
 
@@ -100,17 +122,39 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _app(const DecorateScreen(layout: PhotoLayout.cut4, photos: <XFile>[])),
+        _app(const DecorateScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
       );
       await tester.pumpAndSettle();
 
-      // The redesign groups the options into a tab bar, so each section is
-      // reached by selecting its tab rather than all being on screen at once.
-      for (final String section in <String>['Frames', 'Effects', 'Stickers']) {
+      // The redesign groups the options into a five-tab tray, so each section
+      // is reached by selecting its tab rather than all being on screen at once.
+      for (final String section in <String>[
+        'Filters',
+        'Frames',
+        'Stickers',
+        'Text',
+        'Adjust',
+      ]) {
         expect(find.text(section), findsOneWidget, reason: section);
       }
 
-      // All six frames, all four styles and all eight sticker types remain.
+      // All eight filters, all six frames, all four border styles, all four
+      // patterns and all eight sticker types remain.
+      await tester.tap(find.text('Filters'));
+      await tester.pumpAndSettle();
+      for (final String label in <String>[
+        'Original',
+        'Soft Glow',
+        'Retro Film',
+        'Vivid Pop',
+        'Cool Blue',
+        'Dreamy Pink',
+        'Film Grain',
+        'Classic B&W',
+      ]) {
+        expect(find.bySemanticsLabel('$label filter'), findsOneWidget);
+      }
+
       await tester.tap(find.text('Frames'));
       await tester.pumpAndSettle();
       for (final String label in <String>[
@@ -123,15 +167,21 @@ void main() {
       ]) {
         expect(find.bySemanticsLabel('$label frame'), findsOneWidget);
       }
-
-      await tester.tap(find.text('Effects'));
-      await tester.pumpAndSettle();
+      for (final String label in <String>[
+        'Polka Dot',
+        'Film Edge',
+        'Scallop',
+        'Minimal',
+      ]) {
+        expect(find.bySemanticsLabel('$label border'), findsOneWidget);
+      }
       for (final String label in <String>[
         'Clean',
         'Hearts',
         'Stars',
         'Sparkle',
       ]) {
+        expect(find.bySemanticsLabel('$label pattern'), findsOneWidget);
         expect(find.text(label), findsOneWidget, reason: label);
       }
 
@@ -144,12 +194,12 @@ void main() {
 
     testWidgets('date toggle and sticker add/remove work', (tester) async {
       await tester.pumpWidget(
-        _app(const DecorateScreen(layout: PhotoLayout.cut4, photos: <XFile>[])),
+        _app(const DecorateScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
       );
       await tester.pumpAndSettle();
 
-      // Date toggle lives on the Date tab.
-      await tester.tap(find.text('Date'));
+      // Date toggle lives on the Frames tab.
+      await tester.tap(find.text('Frames'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.byType(Switch),
@@ -192,24 +242,29 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _app(const DecorateScreen(layout: PhotoLayout.cut4, photos: <XFile>[])),
+        _app(const DecorateScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
       );
       await tester.pumpAndSettle();
 
       final Finder panel = find.byType(Scrollable).last;
-      // The screen opens on the Stickers tab, so switch to Frames before
+      // The screen opens on the Filters tab, so switch to Frames before
       // reaching for a background swatch.
       await tester.tap(find.text('Frames'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.bySemanticsLabel('Charcoal frame'));
+      await tester.scrollUntilVisible(
+        find.bySemanticsLabel('Charcoal frame'),
+        60,
+        scrollable: panel,
+      );
       await tester.tap(find.bySemanticsLabel('Charcoal frame'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Effects'));
-      await tester.pumpAndSettle();
-      // The Effects panel is short enough to fit without scrolling, so just
-      // ensure it is on screen instead of dragging the panel.
-      await tester.ensureVisible(find.text('Hearts'));
+      // The pattern shelf also lives on the Frames tab, below the swatches.
+      await tester.scrollUntilVisible(
+        find.text('Hearts'),
+        60,
+        scrollable: panel,
+      );
       await tester.tap(find.text('Hearts'));
       await tester.pumpAndSettle();
 
@@ -234,6 +289,93 @@ void main() {
 
       expect(find.text('Export'), findsNothing);
       expect(find.text('Ready!'), findsOneWidget);
+    });
+
+    testWidgets('filter shelf drives a real intensity slider', (tester) async {
+      await tester.pumpWidget(
+        _app(const DecorateScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
+      );
+      await tester.pumpAndSettle();
+
+      // Opens on Filters with Original selected, so strength is inactive.
+      Slider slider() => tester.widget<Slider>(find.byType(Slider));
+      expect(slider().onChanged, isNull);
+
+      // Picking a non-Original preset activates the strength slider, and
+      // tapping its track moves it off the default.
+      await tester.tap(find.bySemanticsLabel('Retro Film filter'));
+      await tester.pumpAndSettle();
+      expect(slider().onChanged, isNotNull);
+
+      await tester.ensureVisible(find.byType(Slider));
+      await tester.pumpAndSettle();
+      final Rect track = tester.getRect(find.byType(Slider));
+      await tester.tapAt(Offset(track.left + track.width * 0.25, track.center.dy));
+      await tester.pumpAndSettle();
+      expect(slider().value, lessThan(0.5));
+
+      // Every thumbnail really is colour-processed; Original's chip still
+      // renders without a colour filter while others keep identity at 0.
+      expect(find.bySemanticsLabel('Original filter'), findsOneWidget);
+    });
+
+    testWidgets('captions can be added and edited on the fly', (tester) async {
+      await tester.pumpWidget(
+        _app(const DecorateScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Text'));
+      await tester.pumpAndSettle();
+
+      // Focusing the caption field starts the cursor blink, so step through
+      // frames with fixed pumps instead of pumpAndSettle from here on.
+      await tester.enterText(find.byType(TextField), 'Smile!');
+      await tester.scrollUntilVisible(
+        find.text('Add Text'),
+        60,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.tap(find.text('Add Text'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.bySemanticsLabel('Caption: Smile!'), findsOneWidget);
+
+      // The caption stays attached to the cursor, so typing edits it in place.
+      await tester.enterText(find.byType(TextField), 'Smile! x2');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.bySemanticsLabel('Caption: Smile! x2'), findsOneWidget);
+      expect(find.bySemanticsLabel('Caption: Smile!'), findsNothing);
+    });
+
+    testWidgets('adjust sliders are live and independent', (tester) async {
+      await tester.pumpWidget(
+        _app(const DecorateScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Adjust'));
+      await tester.pumpAndSettle();
+
+      // Four functional sliders, all starting neutral at 0.
+      final Finder sliders = find.byType(Slider);
+      expect(sliders, findsNWidgets(4));
+      for (final Slider s in tester.widgetList<Slider>(sliders)) {
+        expect(s.value, 0);
+        expect(s.onChanged, isNotNull);
+      }
+
+      // Dragging Brightness changes only its own slider.
+      final Slider before = tester.widgetList<Slider>(sliders).first;
+      await tester.ensureVisible(sliders.first);
+      await tester.pumpAndSettle();
+      final Rect track = tester.getRect(sliders.first);
+      await tester.tapAt(Offset(track.left + track.width * 0.9, track.center.dy));
+      await tester.pumpAndSettle();
+      final Slider after = tester.widgetList<Slider>(find.byType(Slider)).first;
+      expect(after.value, greaterThan(before.value));
     });
 
     for (final PhotoLayout layout in PhotoLayout.values) {
@@ -275,7 +417,7 @@ void main() {
 
         await tester.pumpWidget(
           _app(
-            const DecorateScreen(layout: PhotoLayout.cut4, photos: <XFile>[]),
+            const DecorateScreen(layout: PhotoLayout.grid4, photos: <XFile>[]),
           ),
         );
         await tester.pumpAndSettle();

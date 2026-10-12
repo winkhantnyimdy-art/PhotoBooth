@@ -11,9 +11,11 @@ import 'package:photo_booth/features/export/export_service.dart';
 import 'package:photo_booth/features/export/photo_strip_renderer.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
 
+import '../../support/fake_export_service.dart';
+
 /// Records every export call so the widget test can assert on the seam
 /// instead of touching the platform gallery / share sheet.
-class FakeExportService implements ExportService {
+class FakeExportService extends RecordingExportService {
   int saveCalls = 0;
   int shareCalls = 0;
 
@@ -108,7 +110,7 @@ Future<void> drainSnackBars(WidgetTester tester) async {
 
 void main() {
   final DecorationState decorationState = const DecorationState(
-    layout: PhotoLayout.cut4,
+    layout: PhotoLayout.grid4,
     background: BackgroundChoice.cream,
     style: DecorativeStyle.clean,
   );
@@ -119,7 +121,7 @@ void main() {
   }) {
     return MaterialApp(
       home: ExportScreen(
-        layout: PhotoLayout.cut4,
+        layout: PhotoLayout.grid4,
         photos: const <XFile>[],
         decorationState: decorationState,
         exportService: service,
@@ -153,7 +155,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: ExportScreen(
-            layout: PhotoLayout.cut4,
+            layout: PhotoLayout.grid4,
             photos: const <XFile>[],
             decorationState: decorationState,
           ),
@@ -349,7 +351,7 @@ void main() {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => ExportScreen(
-                      layout: PhotoLayout.cut4,
+                      layout: PhotoLayout.grid4,
                       photos: const <XFile>[],
                       decorationState: decorationState,
                       exportService: service,

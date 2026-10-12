@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/art/bubble_logo.dart';
+import '../../core/art/collage_banner.dart';
 import '../../core/art/checkerboard.dart';
+import '../../core/art/scrapbook_doodles.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
@@ -19,76 +21,97 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  PhotoLayout _selected = PhotoLayout.cut4;
+  PhotoLayout _selected = kDefaultPhotoLayout;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: <Widget>[
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: <Widget>[
-                    const SizedBox(height: S.sm),
-                    const PhotoBoothBubbleLogo(width: 130),
-                    const SizedBox(height: S.sm),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: S.lg),
-                      child: PressableScale(
-                        child: FilledButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => CameraScreen(layout: _selected),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.camera_alt_rounded, size: 20),
-                          label: const Text('Start Photo Booth  →'),
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(48),
-                            backgroundColor: AppColors.hotPink,
-                            textStyle: AppText.button.copyWith(fontSize: 15),
-                            shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+            const Positioned.fill(child: ScrapbookDoodles()),
+            Column(
+              children: <Widget>[
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: <Widget>[
+                        const SizedBox(height: S.sm),
+                        const PhotoBoothBubbleLogo(width: 130),
+                        const SizedBox(height: S.sm),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: S.lg),
+                          child: CollageBanner(height: 124),
+                        ),
+                        const SizedBox(height: S.md),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: S.lg),
+                          child: Text(
+                            'Pick a layout, smash the shutter, make it yours.',
+                            textAlign: TextAlign.center,
+                            style: AppText.caption,
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: S.md),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: S.lg),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text('Choose Layout', style: AppText.label),
-                          const SizedBox(height: S.xs),
-                          Row(
-                            children: <Widget>[
-                              for (final PhotoLayout layout in PhotoLayout.values) ...<Widget>[
-                                Expanded(
-                                  child: _LayoutCard(
-                                    layout: layout,
-                                    selected: layout == _selected,
-                                    onTap: () => setState(() => _selected = layout),
+                        const SizedBox(height: S.sm),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: S.lg),
+                          child: PressableScale(
+                            child: FilledButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => CameraScreen(layout: _selected),
                                   ),
+                                );
+                              },
+                              icon: const Icon(Icons.camera_alt_rounded, size: 20),
+                              label: const Text('Start Photo Booth  →'),
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size.fromHeight(50),
+                                backgroundColor: AppColors.hotPink,
+                                textStyle: AppText.button.copyWith(fontSize: 15),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: R.pillRadius,
                                 ),
-                                if (layout != PhotoLayout.values.last)
-                                  const SizedBox(width: S.xs),
-                              ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: S.md),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: S.lg),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text('Choose Layout', style: AppText.label),
+                              const SizedBox(height: S.xs),
+                              Row(
+                                children: <Widget>[
+                                  for (final PhotoLayout layout in PhotoLayout.values) ...<Widget>[
+                                    Expanded(
+                                      child: _LayoutCard(
+                                        layout: layout,
+                                        selected: layout == _selected,
+                                        onTap: () => setState(() => _selected = layout),
+                                      ),
+                                    ),
+                                    if (layout != PhotoLayout.values.last)
+                                      const SizedBox(width: S.xs),
+                                  ],
+                                ],
+                              ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: S.md),
+                      ],
                     ),
-                    const SizedBox(height: S.md),
-                  ],
+                  ),
                 ),
-              ),
+                const CheckerboardPattern(height: 20),
+              ],
             ),
-            const CheckerboardPattern(height: 20),
           ],
         ),
       ),
