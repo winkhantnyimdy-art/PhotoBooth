@@ -19,20 +19,28 @@ class App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Widget home = HomeScreen();
-    final Widget content = albumService != null
-        ? AlbumScope(service: albumService!, child: home)
-        : _AlbumBootstrap(factory: albumFactory, child: home);
+    if (albumService != null) {
+      return AlbumScope(
+        service: albumService!,
+        child: _buildApp(const HomeScreen()),
+      );
+    }
+    return _AlbumBootstrap(factory: albumFactory);
+  }
 
+  /// The single MaterialApp of the app.
+  ///
+  /// [AlbumScope] always sits *outside* this widget - never as `home:` - so
+  /// that routes pushed on top of the navigator (album, settings, export)
+  /// all reach the same album instance. Scoped inside `home`, the album
+  /// would only be visible to the first route and every pushed screen would
+  /// fail to resolve it.
+  static Widget _buildApp(Widget home) {
     return MaterialApp(
       title: AppTheme.brand,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
-      // AlbumScope deliberately sits *outside* MaterialApp so that routes
-      // pushed on top of the navigator - the album, settings and export
-      // screens - all reach the same album instance. Placed inside `home` it
-      // would only be visible to the first route.
-      home: content,
+      home: home,
     );
   }
 }
@@ -43,9 +51,8 @@ class App extends StatelessWidget {
 /// awaited inside a `build`, so the bootstrap shows a brief branded splash and
 /// hands the finished service down through [AlbumScope].
 class _AlbumBootstrap extends StatefulWidget {
-  const _AlbumBootstrap({required this.child, this.factory});
+  const _AlbumBootstrap({this.factory});
 
-  final Widget child;
   final AlbumServiceFactory? factory;
 
   @override
@@ -64,13 +71,16 @@ class _AlbumBootstrapState extends State<_AlbumBootstrap> {
         if (snapshot.hasError) {
           // A missing album must not brick the app: the camera and exporter do
           // not depend on it, so the user can still take and download photos.
-          return widget.child;
+          return App._buildApp(const HomeScreen());
         }
         final AlbumService? service = snapshot.data;
         if (service == null) {
-          return const _AlbumSplash();
+          return App._buildApp(const _AlbumSplash());
         }
-        return AlbumScope(service: service, child: widget.child);
+        return AlbumScope(
+          service: service,
+          child: App._buildApp(const HomeScreen()),
+        );
       },
     );
   }

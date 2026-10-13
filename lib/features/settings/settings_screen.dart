@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/art/checkerboard.dart';
@@ -235,7 +236,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final String usage = !_albumUsageKnown
         ? 'Checking…'
         : _albumBytes == null
-            ? 'Not measurable in this browser'
+            ? kIsWeb
+                ? 'Not measurable in this browser'
+                : 'Not measurable on this device'
             : formatAlbumBytes(_albumBytes!);
 
     return _Section(
@@ -264,8 +267,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: S.sm),
         _Note(
-          'Sessions are stored only on this device. Clearing this site\'s data '
-          'in your browser, or uninstalling the app, will erase them.',
+          kIsWeb
+              ? 'Sessions are stored only on this device. Clearing this site\'s data '
+                  'in your browser, or uninstalling the app, will erase them.'
+              : 'Sessions are stored only on this device. Uninstalling the app, '
+                  'or clearing the app\'s data, will erase them.',
         ),
       ],
     );

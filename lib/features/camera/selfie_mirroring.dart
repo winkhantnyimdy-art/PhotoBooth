@@ -38,9 +38,15 @@ abstract final class SelfieMirroring {
   /// This is the one place to correct if a further device/browser combination
   /// turns out to behave differently; the decision logic below is pure and
   /// does not change.
+  ///
+  /// The default follows the build platform: browsers (notably iOS Safari)
+  /// hand back already-mirrored front-camera frames, while the native camera
+  /// plugins deliver the sensor's natural pixels. Hard-coding either value
+  /// breaks the other platform: with the web default on Android, selfies were
+  /// stored unmirrored while the preview showed them mirrored.
   static bool get platformMirrorsFrontCapture => _platformMirrorsFrontCapture;
 
-  static bool _platformMirrorsFrontCapture = true;
+  static bool _platformMirrorsFrontCapture = kIsWeb;
 
   /// Whether the orientation of the photo that will actually be **stored**.
   ///

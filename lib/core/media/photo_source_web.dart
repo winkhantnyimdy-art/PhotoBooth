@@ -46,17 +46,22 @@ void _cacheBytes(String key, Uint8List bytes) {
 Future<XFile> flipPhotoIfNeeded(XFile photo, {required bool flipHorizontal}) async {
   if (!flipHorizontal) return photo;
 
-  final Uint8List source = await readPhotoBytes(photo);
-  final Uint8List? flipped = await flipHorizontally(source);
-  // If the flip failed for any reason, the original photo is still usable; a
-  // capture must never be lost to a cosmetic transform.
-  if (flipped == null) return photo;
+  try {
+    final Uint8List source = await readPhotoBytes(photo);
+    final Uint8List? flipped = await flipHorizontally(source);
+    // If the flip failed for any reason, the original photo is still usable; a
+    // capture must never be lost to a cosmetic transform.
+    if (flipped == null) return photo;
 
-  return XFile.fromData(
-    flipped,
-    mimeType: _mimeTypeFor(photo.path),
-    name: photo.name,
-  );
+    return XFile.fromData(
+      flipped,
+      mimeType: _mimeTypeFor(photo.path),
+      name: photo.name,
+    );
+  } on Object {
+    // Unreadable blob bytes or a failed encode: keep the original capture.
+    return photo;
+  }
 }
 
 /// Horizontally mirrors encoded image bytes.

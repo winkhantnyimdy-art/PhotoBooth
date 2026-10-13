@@ -194,6 +194,21 @@ void main() {
       expect(loaded.value.decorationState.texts.single.text, 'Hello!');
     });
 
+    test('a session with evicted photos fails without browser wording', () async {
+      // Regression test for the Android release: the failure used to blame
+      // "the browser" on every platform. Widget tests run on the VM
+      // (kIsWeb == false), so this covers the native copy.
+      await album.seed(buildTestSession(id: 's1', photoCount: 2));
+      await store.deletePhotos(<String>['s1/0', 's1/1']);
+
+      final AlbumResult<AlbumSession> result = await album.loadSession('s1');
+
+      expect(result, isA<AlbumFailure<AlbumSession>>());
+      final String error = (result as AlbumFailure<AlbumSession>).error;
+      expect(error, contains('could not be found'));
+      expect(error.toLowerCase(), isNot(contains('browser')));
+    });
+
     test('re-saving the same id updates in place instead of duplicating',
         () async {
       await album.seed(buildTestSession(id: 's1', photoCount: 2));

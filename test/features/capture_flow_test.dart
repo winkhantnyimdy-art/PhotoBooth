@@ -130,6 +130,20 @@ Widget _fakeCameraScreen({
   );
 }
 
+/// Seeds preferences with mirroring off before a full-session flow test.
+///
+/// Widget tests run in FakeAsync, where real file IO never resolves, and the
+/// capture fakes hand back unreadable `/tmp` paths. With the default
+/// `mirrorSelfies: true` a front-camera session would enter the file-backed
+/// flip and stall before reaching Review. Seeding the preference off keeps
+/// these flow tests on the no-flip path; the flip itself is covered with real
+/// files in `selfie_mirroring_test.dart`.
+Future<void> _seedMirrorOff() async {
+  SharedPreferences.setMockInitialValues(<String, Object>{});
+  final PreferencesService service = await PreferencesService.create();
+  await service.save(const CameraPreferences(mirrorSelfies: false));
+}
+
 /// Brings the camera screen to its ready state with a working preview.
 Future<_FakeCameraController> _pumpReadyCamera(
   WidgetTester tester, {
@@ -177,6 +191,7 @@ void main() {
     testWidgets('the shutter is tappable and runs the whole session', (
       tester,
     ) async {
+      await _seedMirrorOff();
       final TestTiming timing = TestTiming();
       final List<CameraSessionState> states = <CameraSessionState>[];
       final List<XFile> captured = <XFile>[];
@@ -220,6 +235,7 @@ void main() {
     testWidgets('an individual retake replaces one photo and keeps the rest', (
       tester,
     ) async {
+      await _seedMirrorOff();
       final TestTiming timing = TestTiming();
       final List<CameraSessionState> states = <CameraSessionState>[];
       final List<XFile> captured = <XFile>[];
@@ -327,6 +343,7 @@ void main() {
     testWidgets('capture timing is unchanged for the 2 CUT layout', (
       tester,
     ) async {
+      await _seedMirrorOff();
       final TestTiming timing = TestTiming();
       final List<CameraSessionState> states = <CameraSessionState>[];
       final List<XFile> captured = <XFile>[];
@@ -363,6 +380,7 @@ void main() {
     testWidgets('the full flow reaches decoration from the camera', (
       tester,
     ) async {
+      await _seedMirrorOff();
       final TestTiming timing = TestTiming();
       final List<CameraSessionState> states = <CameraSessionState>[];
       final List<XFile> captured = <XFile>[];

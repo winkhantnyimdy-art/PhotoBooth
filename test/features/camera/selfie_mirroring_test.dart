@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -99,7 +100,24 @@ Future<bool> isDecodableImage(Uint8List bytes, {int? width, int? height}) async 
 void main() {
   group('SelfieMirroring.shouldFlipCapturedPhoto', () {
     tearDown(() {
-      SelfieMirroring.debugSetPlatformMirrorsFrontCapture(true);
+      SelfieMirroring.debugSetPlatformMirrorsFrontCapture(kIsWeb);
+    });
+
+    test('the default platform capability follows the build platform', () {
+      // Regression test for the Android release: the default used to be
+      // hard-coded to the web behaviour (true), so native selfies were stored
+      // unmirrored while the preview showed them mirrored.
+      SelfieMirroring.debugSetPlatformMirrorsFrontCapture(kIsWeb);
+      expect(SelfieMirroring.platformMirrorsFrontCapture, kIsWeb);
+      // With the platform default in effect, the default preference (mirrored
+      // selfies) resolves to a flip exactly when the platform did not mirror.
+      expect(
+        SelfieMirroring.shouldFlipCapturedPhoto(
+          direction: _front.lensDirection,
+          mirrorSelfies: true,
+        ),
+        !kIsWeb,
+      );
     });
 
     test('the back camera is NEVER mirrored', () {
@@ -370,8 +388,7 @@ void main() {
       }
     });
 
-    test('returns the very same photo when no flip is requested', () async {
-      final Uint8List png = await encodeSplitPng();
+    test('returns the very same photo when no flip is requested', () async {      final Uint8List png = await encodeSplitPng();
       final File file = File('${dir.path}/shot.png');
       await file.writeAsBytes(png);
       final XFile photo = XFile(file.path);
@@ -380,6 +397,19 @@ void main() {
 
       expect(identical(result, photo), isTrue,
           reason: 'the no-op path must not re-encode or copy the photo');
+    });
+
+    test('an unreadable source keeps the original instead of throwing',
+        () async {
+      // A capture whose bytes cannot be read (deleted temp file, torn-down
+      // backing store) must not fail the whole session: the cosmetic mirror
+      // is skipped and the original photo survives.
+      final XFile missing = XFile('${dir.path}/does_not_exist.jpg');
+
+      final XFile result =
+          await flipPhotoIfNeeded(missing, flipHorizontal: true);
+
+      expect(result.path, missing.path);
     });
 
     test('horizontally mirrors the stored bytes when a flip is requested',

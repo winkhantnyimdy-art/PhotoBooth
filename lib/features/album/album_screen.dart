@@ -1,4 +1,5 @@
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/art/checkerboard.dart';
@@ -299,7 +300,9 @@ class _AlbumScreenState extends State<AlbumScreen> {
 
   Widget _buildStorageFooter() {
     final String usage = _usageBytes == null
-        ? 'Storage used: not measurable in this browser'
+        ? kIsWeb
+            ? 'Storage used: not measurable in this browser'
+            : 'Storage used: not measurable on this device'
         : 'Storage used: ${formatAlbumBytes(_usageBytes!)}';
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -318,7 +321,9 @@ class _AlbumScreenState extends State<AlbumScreen> {
           ),
           const SizedBox(height: 2),
           Text(
-            'Clearing this site\'s data in your browser will erase the album.',
+            kIsWeb
+                ? 'Clearing this site\'s data in your browser will erase the album.'
+                : 'Uninstalling the app will erase the album.',
             textAlign: TextAlign.center,
             style: AppText.caption.copyWith(color: AppColors.darkMuted, fontSize: 10),
           ),

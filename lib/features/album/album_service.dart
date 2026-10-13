@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 
 import '../home/layout_model.dart';
 import 'album_record.dart';
@@ -207,8 +206,13 @@ class StoreBackedAlbumService implements AlbumService {
       if (missing.isNotEmpty) {
         return AlbumResult.failure(
           missing.length == keys.length
-              ? 'The photos for this session could not be found. The browser may '
-                  'have cleared this site\'s data.'
+              // Web storage can be evicted by the browser; on native the
+              // album lives in app-private files, so a different cause.
+              ? kIsWeb
+                  ? 'The photos for this session could not be found. The browser may '
+                      'have cleared this site\'s data.'
+                  : 'The photos for this session could not be found. The app\'s '
+                      'stored data may have been cleared.'
               : '${missing.length} of ${keys.length} photos for this session '
                   'could not be found.',
           kind: AlbumErrorKind.corrupt,

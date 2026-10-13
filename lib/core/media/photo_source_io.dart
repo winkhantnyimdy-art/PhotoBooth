@@ -23,19 +23,25 @@ Future<XFile> flipPhotoIfNeeded(
 }) async {
   if (!flipHorizontal) return photo;
 
-  final Uint8List source = await readPhotoBytes(photo);
-  final Uint8List? flipped = await flipHorizontally(source);
-  // A failed flip must never lose a capture: fall back to the original.
-  if (flipped == null) return photo;
+  try {
+    final Uint8List source = await readPhotoBytes(photo);
+    final Uint8List? flipped = await flipHorizontally(source);
+    // A failed flip must never lose a capture: fall back to the original.
+    if (flipped == null) return photo;
 
-  final Directory dir = await getTemporaryDirectory();
-  final Directory output = Directory('${dir.path}/photobooth_flipped');
-  if (!await output.exists()) {
-    await output.create(recursive: true);
+    final Directory dir = await getTemporaryDirectory();
+    final Directory output = Directory('${dir.path}/photobooth_flipped');
+    if (!await output.exists()) {
+      await output.create(recursive: true);
+    }
+    final File file = File('${output.path}/${_nextFlippedName(photo.name)}');
+    await file.writeAsBytes(flipped, flush: true);
+    return XFile(file.path, mimeType: 'image/png');
+  } on Object {
+    // Unreadable source bytes, missing temp directory, or a failed encode:
+    // keep the original capture rather than failing the whole session.
+    return photo;
   }
-  final File file = File('${output.path}/${_nextFlippedName(photo.name)}');
-  await file.writeAsBytes(flipped, flush: true);
-  return XFile(file.path, mimeType: 'image/png');
 }
 
 /// Serial suffix making each flipped file unique.

@@ -308,15 +308,17 @@ void main() {
       expect(album.memoryStore.photoCount, 0);
     });
 
-    testWidgets('the album explains that clearing site data erases it',
+    testWidgets('the album explains that uninstalling erases it',
         (tester) async {
       await album.seed(buildTestSession(id: 's1', photoCount: 2));
 
       await tester.pumpWidget(buildAlbumHost(album: album, photos: photoFiles));
       await tester.pumpAndSettle();
 
+      // Widget tests run on the VM (kIsWeb == false), so this covers the
+      // native copy; the web copy keeps the browser wording.
       expect(
-        find.textContaining("Clearing this site's data"),
+        find.textContaining('Uninstalling the app will erase the album.'),
         findsOneWidget,
       );
       expect(find.textContaining('Storage used:'), findsOneWidget);

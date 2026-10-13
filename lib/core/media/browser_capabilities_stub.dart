@@ -15,7 +15,30 @@ abstract final class BrowserCapabilities {
   static bool get canShareFiles => true;
 
   /// Maps a thrown camera error to user-facing copy, or null when unknown.
-  static CameraUnavailableReason? describeCameraError(String? code) => null;
+  ///
+  /// The CameraX backend throws `CameraException`s whose codes are defined in
+  /// `CameraPermissionsManager.java` (`CameraAccessDenied`) and
+  /// `android_camera_camerax.dart` (`cameraNotFound`). A denial must tell the
+  /// user where to fix it (the system Settings app when "Don't ask again" was
+  /// chosen), not just to "try again".
+  static CameraUnavailableReason? describeCameraError(String? code) {
+    switch (code) {
+      case 'CameraAccessDenied':
+        return const CameraUnavailableReason(
+          title: 'Camera permission needed',
+          detail: 'PhotoBooth needs camera access to take photos. Allow the '
+              'camera permission and try again. If you chose "Don\'t ask '
+              'again", enable it in the system Settings app.',
+        );
+      case 'cameraNotFound':
+        return const CameraUnavailableReason(
+          title: 'No cameras detected',
+          detail: 'Check that a camera is available, then try again.',
+        );
+      default:
+        return null;
+    }
+  }
 
   /// Never reached on native: [isSecureContext] is always true.
   static CameraUnavailableReason get insecureContextReason =>

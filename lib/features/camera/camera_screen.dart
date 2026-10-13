@@ -181,10 +181,12 @@ class _CameraScreenState extends State<CameraScreen>
     if (_cameraIndex < 0) _cameraIndex = 0;
     final front = _cameras[_cameraIndex];
 
-    _controller = (widget.controllerFactory ?? CameraController.new)(
-      front,
-      ResolutionPreset.high,
-    );
+    _controller = widget.controllerFactory != null
+        ? widget.controllerFactory!(front, ResolutionPreset.high)
+        // Photo-only app: never request the microphone. The default
+        // `enableAudio: true` makes the CameraX backend ask for RECORD_AUDIO
+        // at startup, which is an unnecessary permission for still capture.
+        : CameraController(front, ResolutionPreset.high, enableAudio: false);
 
     try {
       await _controller!.initialize();
@@ -205,8 +207,10 @@ class _CameraScreenState extends State<CameraScreen>
   /// Turns a plugin exception into copy the user can act on.
   ///
   /// `camera_web` throws `CameraException`s whose codes are documented in its
-  /// `CameraErrorCode` enum; [BrowserCapabilities.describeCameraError] maps
-  /// them, and anything unrecognised falls back to the generic message.
+  /// `CameraErrorCode` enum; the native CameraX backend throws
+  /// `CameraAccessDenied` / `cameraNotFound`. [BrowserCapabilities.describeCameraError]
+  /// maps them per platform, and anything unrecognised falls back to the
+  /// generic message.
   CameraUnavailableReason _classifyCameraError(Object error) {
     final String? code = switch (error) {
       CameraException(code: final String c) => c,
@@ -264,10 +268,10 @@ class _CameraScreenState extends State<CameraScreen>
     // is torn down with the controller.
     setState(() => _switching = true);
     await _controller?.dispose();
-    _controller = (widget.controllerFactory ?? CameraController.new)(
-      newCamera,
-      ResolutionPreset.high,
-    );
+    _controller = widget.controllerFactory != null
+        ? widget.controllerFactory!(newCamera, ResolutionPreset.high)
+        // Photo-only: see _initCamera for why audio stays off.
+        : CameraController(newCamera, ResolutionPreset.high, enableAudio: false);
 
     try {
       await _controller!.initialize();

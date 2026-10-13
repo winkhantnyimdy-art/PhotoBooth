@@ -306,9 +306,9 @@ void main() {
       expect(find.textContaining('Album size'), findsOneWidget);
       expect(find.textContaining(album.backendName), findsOneWidget);
       expect(
-        find.textContaining("Clearing this site's data"),
+        find.textContaining('Uninstalling the app,'),
         findsOneWidget,
-        reason: 'browser data loss must be explained',
+        reason: 'native data loss must be explained without browser wording',
       );
     });
 

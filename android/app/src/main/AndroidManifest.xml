@@ -1,6 +1,19 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" />
+
+    <!-- Photo-only app: still capture never records video or reads shared
+         media, so strip the permissions pulled in by the camera plugin and
+         transitive dependencies. The album lives in app-private storage and
+         gallery saves go through MediaStore, neither of which needs these.
+         Verified in the merged manifest via `aapt2 dump badging`. -->
+    <uses-permission
+        android:name="android.permission.RECORD_AUDIO"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        tools:node="remove" />
 
     <application
         android:label="PhotoBooth"
