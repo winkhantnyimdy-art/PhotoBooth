@@ -264,6 +264,41 @@ void main() {
       );
     });
 
+    testWidgets('toggling mirror selfies persists it immediately',
+        (tester) async {
+      await pumpSettings(tester);
+
+      // Default is mirrored, so the first tap turns it off.
+      expect(
+        tester
+            .widget<Switch>(
+              find.byKey(const ValueKey('toggle-Mirror selfies')),
+            )
+            .value,
+        isTrue,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('toggle-Mirror selfies')));
+      await tester.pumpAndSettle();
+
+      final CameraPreferences loaded =
+          (await PreferencesService.create()).load();
+      expect(loaded.mirrorSelfies, isFalse);
+      // Unrelated preferences are untouched by the mirror toggle.
+      expect(loaded.shutterSoundEnabled, isTrue);
+      expect(loaded.flashAnimationEnabled, isTrue);
+
+      await pumpSettings(tester);
+      expect(
+        tester
+            .widget<Switch>(
+              find.byKey(const ValueKey('toggle-Mirror selfies')),
+            )
+            .value,
+        isFalse,
+      );
+    });
+
     testWidgets('reports album storage usage and the backend', (tester) async {
       await album.seed(buildTestSession(id: 's1', photoCount: 2));
       await pumpSettings(tester);

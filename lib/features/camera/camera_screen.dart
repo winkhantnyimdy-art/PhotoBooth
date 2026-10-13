@@ -19,6 +19,7 @@ import '../home/layout_model.dart';
 import '../review/review_screen.dart';
 import 'captured_session.dart';
 import 'camera_preferences.dart';
+import 'selfie_mirroring.dart';
 import 'photo_viewfinder.dart';
 import 'preferences_service.dart';
 import 'session_state.dart';
@@ -353,7 +354,7 @@ class _CameraScreenState extends State<CameraScreen>
     if (widget.isRetake) {
       final NavigatorState navigator = Navigator.of(context);
       navigator.pop<XFile>(result.success && result.photos.isNotEmpty
-          ? result.photos.first
+          ? await _applySelfieMirroring(result.photos.first)
           : null);
       return;
     }
@@ -361,7 +362,16 @@ class _CameraScreenState extends State<CameraScreen>
     if (result.success && result.photos.length == totalShots) {
       setState(() {
         _sessionState = CameraSessionState.complete;
-        _capturedPhotos.addAll(result.photos);
+      });
+      // Normalise orientation here, at capture time, so Review, Decorate, the
+      // album and the exported PNG all agree. A preview-only transform would
+      // leave the saved bytes in whatever orientation the platform happened to
+      // produce, which is what made front-camera selfies come out mirrored on
+      // iOS Safari.
+      final List<XFile> photos = await _applySelfieMirroringAll(result.photos);
+      if (!mounted) return;
+      setState(() {
+        _capturedPhotos.addAll(photos);
       });
       _navigateToReview();
     } else {
@@ -375,6 +385,33 @@ class _CameraScreenState extends State<CameraScreen>
         );
       });
     }
+  }
+
+  /// Whether freshly captured photos need a horizontal flip.
+  bool get _shouldFlipCaptured {
+    final CameraLensDirection? direction =
+        _controller?.description.lensDirection;
+    if (direction == null) return false;
+    return SelfieMirroring.shouldFlipCapturedPhoto(
+      direction: direction,
+      mirrorSelfies: _preferences.mirrorSelfies,
+    );
+  }
+
+  /// Applies the selfie-mirroring preference to one freshly captured photo.
+  Future<XFile> _applySelfieMirroring(XFile photo) async {
+    if (!_shouldFlipCaptured) return photo;
+    return flipPhotoIfNeeded(photo, flipHorizontal: true);
+  }
+
+  /// Applies the selfie-mirroring preference to a whole captured session.
+  Future<List<XFile>> _applySelfieMirroringAll(List<XFile> photos) async {
+    if (!_shouldFlipCaptured) return photos;
+    final List<XFile> out = <XFile>[];
+    for (final XFile photo in photos) {
+      out.add(await _applySelfieMirroring(photo));
+    }
+    return out;
   }
 
   Future<void> _navigateToReview() async {

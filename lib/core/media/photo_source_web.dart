@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/widgets.dart';
@@ -30,6 +31,77 @@ void _cacheBytes(String key, Uint8List bytes) {
     _byteCache.remove(_byteCache.keys.first);
   }
   _byteCache[key] = bytes;
+}
+
+/// Returns [photo], flipped horizontally when [flipHorizontal] is true.
+///
+/// Flipping happens **here**, at capture time, rather than as a widget
+/// transform, so that Review, Decorate, the album and the exported PNG all show
+/// the same orientation. A preview-only transform would leave the saved bytes
+/// in whatever orientation the platform happened to produce.
+///
+/// The decode/encode round-trip is done with `dart:ui`, which works unchanged
+/// on every platform. When no flip is needed the original [photo] is returned
+/// untouched, so the common path costs nothing and never re-encodes.
+Future<XFile> flipPhotoIfNeeded(XFile photo, {required bool flipHorizontal}) async {
+  if (!flipHorizontal) return photo;
+
+  final Uint8List source = await readPhotoBytes(photo);
+  final Uint8List? flipped = await flipHorizontally(source);
+  // If the flip failed for any reason, the original photo is still usable; a
+  // capture must never be lost to a cosmetic transform.
+  if (flipped == null) return photo;
+
+  return XFile.fromData(
+    flipped,
+    mimeType: _mimeTypeFor(photo.path),
+    name: photo.name,
+  );
+}
+
+/// Horizontally mirrors encoded image bytes.
+///
+/// Returns null when the bytes cannot be decoded, so callers can fall back to
+/// the original image rather than losing the photo.
+Future<Uint8List?> flipHorizontally(Uint8List bytes) async {
+  ui.ImmutableBuffer? buffer;
+  ui.Codec? codec;
+  ui.Image? source;
+  ui.Image? target;
+  try {
+    buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+    codec = await ui.instantiateImageCodecFromBuffer(buffer);
+    final ui.FrameInfo frame = await codec.getNextFrame();
+    source = frame.image;
+
+    final ui.PictureRecorder recorder = ui.PictureRecorder();
+    final ui.Canvas canvas = ui.Canvas(recorder);
+    canvas.translate(source.width.toDouble(), 0);
+    canvas.scale(-1, 1);
+    canvas.drawImage(source, Offset.zero, Paint());
+
+    final ui.Picture picture = recorder.endRecording();
+    target = await picture.toImage(source.width, source.height);
+    picture.dispose();
+
+    final ByteData? encoded =
+        await target.toByteData(format: ui.ImageByteFormat.png);
+    if (encoded == null) return null;
+    return encoded.buffer.asUint8List();
+  } on Object {
+    return null;
+  } finally {
+    target?.dispose();
+    source?.dispose();
+    codec?.dispose();
+  }
+}
+
+String _mimeTypeFor(String path) {
+  final String lower = path.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
 }
 
 /// Paints a captured photo in the browser.

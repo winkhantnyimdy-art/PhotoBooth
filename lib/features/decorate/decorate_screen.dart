@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -1135,6 +1136,30 @@ class _Composition extends StatelessWidget {
             child: Stack(
               clipBehavior: Clip.none,
               children: <Widget>[
+                // The frame theme paints opaque paper across the whole strip
+                // before drawing its border, so it has to be the FIRST child.
+                // Painting it last (as this screen used to) buried the photo
+                // cells underneath and the composition rendered as a pink
+                // frame around an empty interior - while the filter
+                // thumbnails, which live outside this Stack, kept working.
+                //
+                // The wordmark is skipped here because the footer band below
+                // draws it itself; painting it here would put a second one on
+                // top of the photo grid.
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: RepaintBoundary(
+                      key: const ValueKey<String>('composition-canvas'),
+                      child: CustomPaint(
+                        painter: _FrameThemePainter(
+                          theme: state.frameTheme,
+                          wordmarkSize:
+                              13 * (width / PhotoStripGeometry.exportWidth),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 Positioned(
                   left: pad,
                   right: pad,
@@ -1212,16 +1237,10 @@ class _Composition extends StatelessWidget {
                   height: math.max(0, height - gridHeight),
                   child: KeyedSubtree(
                     key: const ValueKey<String>('composition-footer'),
-                    child: _BrandingStrip(state: state, onDark: onDark),
-                  ),
-                ),
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: _FrameThemePainter(
-                        theme: state.frameTheme,
-                        wordmarkSize: 13 * (width / PhotoStripGeometry.exportWidth),
-                      ),
+                    child: _BrandingStrip(
+                      state: state,
+                      onDark: onDark,
+                      scale: width / PhotoStripGeometry.exportWidth,
                     ),
                   ),
                 ),
@@ -1247,6 +1266,8 @@ class _FrameThemePainter extends CustomPainter {
       Rect.fromLTWH(0, 0, size.width, size.height),
       theme,
       wordmarkSize: wordmarkSize,
+      // The footer band owns the wordmark; see _BrandingStrip.
+      includeWordmark: false,
     );
   }
 
@@ -1272,8 +1293,16 @@ class _PhotoGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final double cell =
-            (constraints.maxWidth - (gutter * (layout.cols - 1))) / layout.cols;
+        // Cell sizing is delegated to the shared geometry so the preview uses
+        // the same 3:4 cell shape the PNG does. Deriving the height from the
+        // width here (as this used to) made preview cells square, so the
+        // composition the user styled was not the composition they got.
+        final Rect cell = PhotoStripGeometry.previewCell(
+          layout: layout,
+          availableWidth: constraints.maxWidth,
+          gutter: gutter,
+        );
+
         return Wrap(
           spacing: gutter,
           runSpacing: gutter,
@@ -1284,8 +1313,8 @@ class _PhotoGrid extends StatelessWidget {
               ClipRRect(
                 borderRadius: R.all(1.5 * gutter / S.sm),
                 child: SizedBox(
-                  width: cell,
-                  height: cell,
+                  width: cell.width,
+                  height: cell.height,
                   child: _FilteredImage(
                     photo: photos[i],
                     colorFilter: colorFilter,
@@ -1509,58 +1538,97 @@ class _OverlayPainter extends CustomPainter {
       old.style != style || old.color != color;
 }
 
+/// The branding footer beneath the photo grid.
+///
+/// The wordmark is painted by [FrameThemePainter.paintWordmark] - the exact
+/// routine `PhotoStripRenderer` uses for the export - so the preview footer and
+/// the exported footer are the same artwork at the same relative size, rather
+/// than two hand-written approximations that drift apart.
 class _BrandingStrip extends StatelessWidget {
-  const _BrandingStrip({required this.state, required this.onDark});
+  const _BrandingStrip({
+    required this.state,
+    required this.onDark,
+    required this.scale,
+  });
 
   final DecorationState state;
   final bool onDark;
 
+  /// Preview width / export width, so export-space constants scale down.
+  final double scale;
+
   @override
   Widget build(BuildContext context) {
-    final Color foreground = onDark ? AppColors.onDark : AppColors.textPrimary;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: foreground.withValues(alpha: 0.16)),
-        ),
+    final Color foreground = onDark ? AppColors.onDark : AppColors.popInk;
+    return CustomPaint(
+      painter: _FooterPainter(
+        state: state,
+        foreground: foreground,
+        scale: scale,
       ),
-      child: Center(
-        child: FittedBox(
-          // The footer is only as tall as the strip leaves over after the photo
-          // grid, which is small on narrow previews. Scale the branding group
-          // down to fit instead of letting it overflow the footer.
-          fit: BoxFit.scaleDown,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              SizedBox(
-                width: 80,
-                child: Text(
-                  'PHOTOBOOTH',
-                  textAlign: TextAlign.center,
-                  style: AppText.wordmark.copyWith(
-                    fontSize: 13,
-                    color: AppColors.bubblePink,
-                  ),
-                ),
-              ),
-              if (state.showDate) ...<Widget>[
-                const SizedBox(height: 2),
-                Text(
-                  formatExportDate(state.displayDate),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: foreground.withValues(alpha: 0.75),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+      child: const SizedBox.expand(),
+    );
+  }
+}
+
+class _FooterPainter extends CustomPainter {
+  const _FooterPainter({
+    required this.state,
+    required this.foreground,
+    required this.scale,
+  });
+
+  final DecorationState state;
+  final Color foreground;
+  final double scale;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Rect footer = Offset.zero & size;
+
+    // Mirrors `_renderBranding` in the exporter: same wordmark routine, same
+    // export-space em size, same date offset.
+    FrameThemePainter.paintWordmark(
+      canvas,
+      footer,
+      state.frameTheme,
+      36 * scale,
+    );
+
+    if (!state.showDate) return;
+
+    final TextPainter date = _datePainter(
+      formatExportDate(state.displayDate),
+      TextStyle(
+        fontSize: 20 * scale,
+        fontWeight: FontWeight.w600,
+        color: foreground.withValues(alpha: 0.75),
+        letterSpacing: 2 * scale,
+      ),
+    );
+    date.paint(
+      canvas,
+      Offset(
+        footer.center.dx - date.width / 2,
+        footer.center.dy + (24 * scale),
       ),
     );
   }
+
+  static TextPainter _datePainter(String text, TextStyle style) {
+    final TextPainter painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: ui.TextDirection.ltr,
+    );
+    painter.layout();
+    return painter;
+  }
+
+  @override
+  bool shouldRepaint(covariant _FooterPainter old) =>
+      old.state != state ||
+      old.foreground != foreground ||
+      old.scale != scale;
 }
 
 // -----------------------------------------------------------------------------

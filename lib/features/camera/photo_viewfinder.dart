@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import 'camera_geometry.dart';
+import 'selfie_mirroring.dart';
 
 /// A full-bleed, orientation-independent camera viewfinder.
 ///
@@ -57,14 +58,18 @@ class PhotoViewfinder extends StatelessWidget {
       streamSize: streamSize,
       shootInPortrait: shootInPortrait,
     );
-    final bool mirrored = controller.description.lensDirection ==
-        CameraLensDirection.front;
+    final bool mirrored = SelfieMirroring.shouldMirrorPreview(
+      controller.description.lensDirection,
+    );
 
     Widget feed = controller.buildPreview();
 
     // Front cameras read as a mirror to the user; back cameras must not be
-    // flipped. Applied here (and not per-capture) so the live preview and the
-    // saved photo agree. Transform does not affect layout.
+    // flipped. This is preview-only: the captured bytes are normalised
+    // separately, at capture time, by CameraScreen via [SelfieMirroring].
+    // Relying on this transform alone (as this widget originally assumed) left
+    // the saved photo in whatever orientation the platform produced, which is
+    // how front-camera selfies came out mirrored on iOS Safari.
     if (mirrored) {
       feed = Transform(
         alignment: Alignment.center,

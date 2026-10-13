@@ -42,6 +42,27 @@ abstract final class PhotoStripGeometry {
   /// the available space so their gaps match the exported strip.
   static double gutterRatio(PhotoLayout layout) => gutter / cellWidth(layout);
 
+  /// Cell box a *preview* should use for [layout] given [availableWidth].
+  ///
+  /// Previews run at a fraction of export scale, so they cannot reuse
+  /// [cellWidth] directly; they scale the whole grid to whatever width they
+  /// are given. Doing that maths here rather than inline in each preview is
+  /// what keeps previews honest: one that derived its cell height from its cell
+  /// width alone would draw square cells while the PNG renders 3:4 portrait
+  /// cells, so the composition the user styled would not be the one they got.
+  ///
+  /// [gutter] is expected to already be scaled to the preview.
+  static Rect previewCell({
+    required PhotoLayout layout,
+    required double availableWidth,
+    required double gutter,
+  }) {
+    if (availableWidth <= 0) return Rect.zero;
+    final double w = (availableWidth - (gutter * (layout.cols - 1))) / layout.cols;
+    final double h = w / cellAspect(layout);
+    return Rect.fromLTWH(0, 0, w, h);
+  }
+
   /// Width of one photo cell.
   static double cellWidth(PhotoLayout layout) {
     final double usable = exportWidth - (outerPadding * 2);

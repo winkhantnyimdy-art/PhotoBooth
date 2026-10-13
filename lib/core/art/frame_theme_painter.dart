@@ -15,18 +15,31 @@ import 'deco_scatter.dart';
 /// recoloured variants. All sizes derive from [rect], so the artwork is
 /// proportional in the Decorate preview and at full export resolution.
 ///
-/// The Decorate preview and `PhotoStripRenderer` both call this, so what the
-/// user sees while choosing a theme is what the PNG contains.
+/// ## Z-order contract
+///
+/// [paint] fills the **whole** rect with opaque paper before drawing the
+/// border, so it must always be the *first* thing drawn for a composition -
+/// exactly as `PhotoStripRenderer` does it. Painting it later buries the photo
+/// cells underneath and the strip renders as an empty frame.
+///
+/// That makes the wordmark a trap: at its default placement it is centred on
+/// [rect], i.e. right over the photo grid. Callers that draw their own footer
+/// band (the Decorate preview does) pass `includeWordmark: false` so the
+/// wordmark is neither painted twice nor painted over the photos.
 abstract final class FrameThemePainter {
   /// Paints the theme chrome into [rect].
   ///
   /// [wordmarkSize] is the em size for the footer wordmark; the caller passes
   /// a value appropriate to the canvas it is drawing into.
+  ///
+  /// [includeWordmark] paints the wordmark centred on [rect]. Pass false when
+  /// the caller draws the footer wordmark itself into a dedicated footer band.
   static void paint(
     ui.Canvas canvas,
     ui.Rect rect,
     FrameTheme theme, {
     double wordmarkSize = 36,
+    bool includeWordmark = true,
   }) {
     final FrameThemeSpec spec = theme.spec;
 
@@ -54,7 +67,9 @@ abstract final class FrameThemePainter {
     }
 
     // 3. Footer wordmark.
-    paintWordmark(canvas, rect, theme, wordmarkSize);
+    if (includeWordmark) {
+      paintWordmark(canvas, rect, theme, wordmarkSize);
+    }
   }
 
   /// Paints just the theme's footer wordmark, centred in [footer].

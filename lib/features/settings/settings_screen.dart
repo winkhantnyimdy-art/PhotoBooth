@@ -215,6 +215,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _preferences.copyWith(flashAnimationEnabled: value),
             ),
           ),
+          const SizedBox(height: S.sm),
+          _ToggleRow(
+            title: 'Mirror selfies',
+            subtitle: 'Save front-camera photos as they look in the mirror. '
+                'Back camera is never mirrored.',
+            icon: Icons.flip_camera_android_rounded,
+            value: _preferences.mirrorSelfies,
+            onChanged: (bool value) => _update(
+              _preferences.copyWith(mirrorSelfies: value),
+            ),
+          ),
         ],
       );
 
