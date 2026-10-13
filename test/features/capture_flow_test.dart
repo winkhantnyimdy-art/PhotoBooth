@@ -6,12 +6,30 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:photo_booth/core/theme/app_colors.dart';
 import 'package:photo_booth/core/theme/app_theme.dart';
+import 'package:photo_booth/features/camera/camera_preferences.dart';
 import 'package:photo_booth/features/camera/camera_screen.dart';
+import 'package:photo_booth/features/camera/preferences_service.dart';
 import 'package:photo_booth/features/camera/session_state.dart';
+import 'package:photo_booth/features/camera/shutter_sound.dart';
 import 'package:photo_booth/features/camera/timing.dart';
 import 'package:photo_booth/features/decorate/decorate_screen.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
 import 'package:photo_booth/features/review/review_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Counts shutter-sound calls without needing an audio plugin.
+class _RecordingShutterSound extends ShutterSoundService {
+  _RecordingShutterSound() : super.silent();
+
+  int prepareCount = 0;
+  int playCount = 0;
+
+  @override
+  Future<void> prepare() async => prepareCount++;
+
+  @override
+  Future<void> play() async => playCount++;
+}
 
 /// Stands in for a real camera so the screen can reach its ready state in a
 /// widget test. Only the members the screen actually uses are overridden.
@@ -80,11 +98,13 @@ Widget _fakeCameraScreen({
   Completer<void>? captureGate,
   List<_FakeCameraController>? created,
   int? retakeIndex,
+  ShutterSoundService? shutterSound,
 }) {
   final List<XFile> photos = captured ?? <XFile>[];
   return CameraScreen(
     layout: layout,
     retakeIndex: retakeIndex,
+    shutterSound: shutterSound,
     cameraProvider: () async => <CameraDescription>[_front, _back],
     controllerFactory:
         (CameraDescription description, ResolutionPreset preset) {
@@ -116,6 +136,7 @@ Future<_FakeCameraController> _pumpReadyCamera(
   required List<CameraSessionState> states,
   List<XFile>? captured,
   Completer<void>? captureGate,
+  ShutterSoundService? shutterSound,
 }) async {
   final List<XFile> photos = captured ?? <XFile>[];
   final List<_FakeCameraController> created = <_FakeCameraController>[];
@@ -130,6 +151,7 @@ Future<_FakeCameraController> _pumpReadyCamera(
         captured: photos,
         captureGate: captureGate,
         created: created,
+        shutterSound: shutterSound,
       ),
     ),
   );
@@ -609,6 +631,188 @@ void main() {
         timing,
         () => states.contains(CameraSessionState.complete),
       );
+    });
+
+    group('camera preferences', () {
+      Future<void> seedPreferences({
+        bool shutterSound = true,
+        bool flashAnimation = true,
+        int countdownSeconds = 3,
+      }) async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        final PreferencesService service = await PreferencesService.create();
+        await service.save(
+          CameraPreferences(
+            countdownSeconds: countdownSeconds,
+            shutterSoundEnabled: shutterSound,
+            flashAnimationEnabled: flashAnimation,
+          ),
+        );
+      }
+
+      testWidgets('plays the shutter click once per capture when enabled',
+          (tester) async {
+        await seedPreferences(shutterSound: true);
+        final TestTiming timing = TestTiming();
+        final List<CameraSessionState> states = <CameraSessionState>[];
+        final _RecordingShutterSound sound = _RecordingShutterSound();
+
+        await _pumpReadyCamera(
+          tester,
+          layout: PhotoLayout.pair2,
+          timing: timing,
+          states: states,
+          shutterSound: sound,
+        );
+        await tester.pump();
+
+        await tester.tap(find.byKey(const ValueKey('shutter')));
+        await _runSession(
+          tester,
+          timing,
+          () => states.contains(CameraSessionState.complete),
+        );
+
+        // Two shots in the pair2 layout, so two clicks - and the audio session
+        // was armed on the shutter tap.
+        expect(sound.playCount, 2);
+        expect(sound.prepareCount, 1);
+      });
+
+      testWidgets('plays no sound when the preference is off', (tester) async {
+        await seedPreferences(shutterSound: false);
+        final TestTiming timing = TestTiming();
+        final List<CameraSessionState> states = <CameraSessionState>[];
+        final _RecordingShutterSound sound = _RecordingShutterSound();
+
+        await _pumpReadyCamera(
+          tester,
+          layout: PhotoLayout.pair2,
+          timing: timing,
+          states: states,
+          shutterSound: sound,
+        );
+        await tester.pump();
+
+        await tester.tap(find.byKey(const ValueKey('shutter')));
+        await _runSession(
+          tester,
+          timing,
+          () => states.contains(CameraSessionState.complete),
+        );
+
+        expect(sound.playCount, 0);
+        expect(sound.prepareCount, 0);
+      });
+
+      testWidgets('the flash overlay is shown when the preference is on',
+          (tester) async {
+        await seedPreferences(flashAnimation: true);
+        final TestTiming timing = TestTiming();
+        final List<CameraSessionState> states = <CameraSessionState>[];
+        final Completer<void> gate = Completer<void>();
+
+        await _pumpReadyCamera(
+          tester,
+          layout: PhotoLayout.pair2,
+          timing: timing,
+          states: states,
+          captured: <XFile>[],
+          captureGate: gate,
+        );
+
+        await tester.tap(find.byKey(const ValueKey('shutter')));
+        for (int i = 0; i < 60; i++) {
+          timing.tick();
+          await tester.pump(const Duration(milliseconds: 20));
+          if (states.contains(CameraSessionState.capturing)) break;
+        }
+        await tester.pump();
+
+        expect(
+          find.byKey(const ValueKey('capture-flash')),
+          findsOneWidget,
+        );
+
+        gate.complete();
+        await _runSession(
+          tester,
+          timing,
+          () => states.contains(CameraSessionState.complete),
+        );
+      });
+
+      testWidgets('the flash overlay is hidden when the preference is off',
+          (tester) async {
+        await seedPreferences(flashAnimation: false);
+        final TestTiming timing = TestTiming();
+        final List<CameraSessionState> states = <CameraSessionState>[];
+        final Completer<void> gate = Completer<void>();
+
+        await _pumpReadyCamera(
+          tester,
+          layout: PhotoLayout.pair2,
+          timing: timing,
+          states: states,
+          captured: <XFile>[],
+          captureGate: gate,
+        );
+
+        await tester.tap(find.byKey(const ValueKey('shutter')));
+        for (int i = 0; i < 60; i++) {
+          timing.tick();
+          await tester.pump(const Duration(milliseconds: 20));
+          if (states.contains(CameraSessionState.capturing)) break;
+        }
+        await tester.pump();
+
+        expect(find.byKey(const ValueKey('capture-flash')), findsNothing);
+
+        gate.complete();
+        await _runSession(
+          tester,
+          timing,
+          () => states.contains(CameraSessionState.complete),
+        );
+      });
+
+      testWidgets('the saved countdown length drives the run', (tester) async {
+        await seedPreferences(countdownSeconds: 5);
+        final TestTiming timing = TestTiming();
+        final List<CameraSessionState> states = <CameraSessionState>[];
+        final List<int?> countdowns = <int?>[];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.theme,
+            home: CameraScreen(
+              layout: PhotoLayout.pair2,
+              cameraProvider: () async => <CameraDescription>[_front],
+              controllerFactory:
+                  (CameraDescription d, ResolutionPreset p) =>
+                      _FakeCameraController(d),
+              captureProvider: () async => XFile('/tmp/shot.jpg'),
+              timing: timing,
+              shutterSound: _RecordingShutterSound(),
+              onStateChange: (CameraSessionState state, {int? countdown, int? shot}) {
+                states.add(state);
+                if (countdown != null) countdowns.add(countdown);
+              },
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.tap(find.byKey(const ValueKey('shutter')));
+        await _runSession(
+          tester,
+          timing,
+          () => states.contains(CameraSessionState.complete),
+        );
+
+        // Two shots at a five second countdown: 5,4,3,2,1 twice.
+        expect(countdowns, <int>[5, 4, 3, 2, 1, 5, 4, 3, 2, 1]);
+      });
     });
   });
 }

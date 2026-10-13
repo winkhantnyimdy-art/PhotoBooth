@@ -15,6 +15,7 @@ import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/pressable.dart';
+import '../album/album_scope.dart';
 import '../export/export_screen.dart';
 import '../home/layout_geometry.dart';
 import '../home/layout_model.dart';
@@ -28,10 +29,28 @@ import 'frame_theme.dart';
 /// overlay all resolve through the same engine the exporter uses, so the preview
 /// is a faithful preview of the saved PNG rather than a decorative mock-up.
 class DecorateScreen extends StatefulWidget {
-  const DecorateScreen({super.key, required this.layout, required this.photos});
+  const DecorateScreen({
+    super.key,
+    required this.layout,
+    required this.photos,
+    this.initialDecorationState,
+    this.albumSessionId,
+  });
 
   final PhotoLayout layout;
   final List<XFile> photos;
+
+  /// Decoration state to start from when reopening a saved album session.
+  ///
+  /// Null for a fresh composition, which begins from the default styling. When
+  /// supplied, every option - frame theme, background, pattern, stickers,
+  /// captions, filter, strength and adjustments - is restored exactly, so
+  /// editing a saved session continues the user's work rather than resetting it.
+  final DecorationState? initialDecorationState;
+
+  /// Album id to re-save under, so an edited session replaces its original
+  /// instead of creating a duplicate entry.
+  final String? albumSessionId;
 
   @override
   State<DecorateScreen> createState() => _DecorateScreenState();
@@ -78,11 +97,15 @@ class _DecorateScreenState extends State<DecorateScreen> {
   void initState() {
     super.initState();
     _layout = widget.layout;
-    _state = DecorationState(
-      layout: _layout,
-      background: BackgroundChoice.cream,
-      style: DecorativeStyle.clean,
-    );
+    // A reopened album session keeps its own layout choice, which may differ
+    // from the layout the photos were originally captured into.
+    _state = widget.initialDecorationState ??
+        DecorationState(
+          layout: _layout,
+          background: BackgroundChoice.cream,
+          style: DecorativeStyle.clean,
+        );
+    _layout = _state.layout;
   }
 
   /// Switches the composition to [next], keeping every photo and edit.
@@ -154,7 +177,9 @@ class _DecorateScreenState extends State<DecorateScreen> {
               Expanded(
                 child: Center(
                   child: Text(
-                    'Decorate',
+                    widget.albumSessionId == null
+                        ? 'Decorate'
+                        : 'Edit Session',
                     style: AppText.title.copyWith(color: AppColors.onDark),
                   ),
                 ),
@@ -766,6 +791,12 @@ class _DecorateScreenState extends State<DecorateScreen> {
           layout: _layout,
           photos: widget.photos,
           decorationState: _state,
+          // Threaded through so "Save to Album" updates the reopened session
+          // instead of creating a duplicate.
+          albumSessionId: widget.albumSessionId,
+          // Null when storage is unavailable, which hides the album action
+          // rather than offering a button that cannot work.
+          albumService: maybeAlbumOf(context),
         ),
       ),
     );

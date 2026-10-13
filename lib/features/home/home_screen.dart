@@ -10,9 +10,9 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/pressable.dart';
 import 'layout_model.dart';
+import '../album/album_scope.dart';
+import '../album/album_service_contract.dart';
 import '../album/album_screen.dart';
-import '../album/album_service_io.dart'
-    if (dart.library.js_interop) '../album/album_service_web.dart';
 import '../camera/camera_screen.dart';
 import '../camera/preferences_service.dart';
 import '../settings/settings_screen.dart';
@@ -133,7 +133,10 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const _AlbumRoute(),
+                  builder: (BuildContext context) => AlbumScreen(
+                    albumService: albumOf(context),
+                    photoFiles: createPlatformAlbumPhotoFiles(),
+                  ),
                 ),
               );
             },
@@ -207,60 +210,26 @@ class _SettingsRoute extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return Scaffold(
-            backgroundColor: AppColors.background,
+            backgroundColor: AppColors.darkSurface,
             body: Center(
               child: CircularProgressIndicator(color: AppColors.hotPink),
             ),
           );
         }
-        if (snapshot.hasError) {
+        if (snapshot.hasError || snapshot.data == null) {
           return Scaffold(
-            backgroundColor: AppColors.background,
+            backgroundColor: AppColors.darkSurface,
             body: Center(
-              child: Text('Failed to load settings: ${snapshot.error}'),
+              child: Text(
+                'Could not load settings',
+                style: AppText.body.copyWith(color: AppColors.onDark),
+              ),
             ),
           );
         }
         return SettingsScreen(preferencesService: snapshot.data!);
       },
     );
-  }
-}
-
-/// Route wrapper that initializes AlbumService before showing AlbumScreen.
-class _AlbumRoute extends StatelessWidget {
-  const _AlbumRoute();
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<AppAlbumService>(
-      future: _createAlbumService(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return Scaffold(
-            backgroundColor: AppColors.background,
-            body: Center(
-              child: CircularProgressIndicator(color: AppColors.hotPink),
-            ),
-          );
-        }
-        if (snapshot.hasError) {
-          return Scaffold(
-            backgroundColor: AppColors.background,
-            body: Center(
-              child: Text('Failed to load album: ${snapshot.error}'),
-            ),
-          );
-        }
-        return AlbumScreen(albumService: snapshot.data!);
-      },
-    );
-  }
-
-  static Future<AppAlbumService> _createAlbumService() async {
-    final service = AppAlbumService();
-    await service.initialize();
-    return service;
   }
 }
 

@@ -52,11 +52,16 @@ class AlbumSession {
   int get photoCount => photoBytes.length;
 
   /// Display name for the album grid.
-  String get displayName => name ?? 'Session ${_formatDate(createdAt)}';
+  String get displayName => name ?? 'Session ${formatDate(createdAt)}';
 
-  static String _formatDate(DateTime date) =>
+  /// `YYYY-MM-DD HH:MM` stamp used for default session names.
+  static String formatDate(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
       '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+
+  /// Bytes of every photo in this session, in capture order.
+  List<Uint8List> get allPhotoBytes =>
+      List<Uint8List>.unmodifiable(photoBytes);
 
   /// Creates a copy with the given fields replaced.
   AlbumSession copyWith({
@@ -88,7 +93,7 @@ class AlbumSession {
       'createdAt': createdAt.toIso8601String(),
       'layout': layout.name,
       'photoBytes': photoBytes.map((b) => base64Encode(b)).toList(),
-      'decorationState': _decorationStateToJson(decorationState),
+      'decorationState': decorationStateToJson(decorationState),
       'thumbnailBytes': base64Encode(thumbnailBytes),
       'name': name,
     };
@@ -105,7 +110,9 @@ class AlbumSession {
       photoBytes: (json['photoBytes'] as List)
           .map((s) => base64Decode(s as String))
           .toList(),
-      decorationState: _decorationStateFromJson(json['decorationState'] as Map<String, dynamic>),
+      decorationState: decorationStateFromJson(
+        json['decorationState'] as Map<String, dynamic>,
+      ),
       thumbnailBytes: base64Decode(json['thumbnailBytes'] as String),
       name: json['name'] as String?,
     );
@@ -113,7 +120,7 @@ class AlbumSession {
 }
 
 /// Converts [DecorationState] to a JSON-serializable map.
-Map<String, dynamic> _decorationStateToJson(DecorationState state) {
+Map<String, dynamic> decorationStateToJson(DecorationState state) {
   return {
     'layout': state.layout.name,
     'background': state.background.name,
@@ -131,7 +138,7 @@ Map<String, dynamic> _decorationStateToJson(DecorationState state) {
 }
 
 /// Creates [DecorationState] from a JSON map.
-DecorationState _decorationStateFromJson(Map<String, dynamic> json) {
+DecorationState decorationStateFromJson(Map<String, dynamic> json) {
   return DecorationState(
     layout: PhotoLayout.values.byName(json['layout'] as String),
     background: BackgroundChoice.values.byName(json['background'] as String),
@@ -211,6 +218,3 @@ PhotoAdjustments _photoAdjustmentsFromJson(Map<String, dynamic> json) {
     warmth: (json['warmth'] as num).toDouble(),
   );
 }
-
-// Need to import dart:convert for base64Encode/decode
-// Added at top of file

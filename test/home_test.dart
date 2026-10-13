@@ -12,6 +12,8 @@ import 'package:photo_booth/features/home/home_screen.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
 import 'package:photo_booth/features/camera/camera_screen.dart';
 
+import 'support/fake_album.dart';
+
 /// Finds the tappable card that shows [label] for a layout.
 Finder _layoutCard(String label) => find.ancestor(
   of: find.text(label),
@@ -33,14 +35,14 @@ bool _isSelected(WidgetTester tester, String label) {
 void main() {
   group('HomeScreen', () {
     testWidgets('renders', (tester) async {
-      await tester.pumpWidget(const App());
+      await tester.pumpWidget(App(albumService: FakeAlbumService()));
       // The redesign paints the wordmark as a bubble logo rather than a Text
       // widget, so the brand is asserted by widget type now.
       expect(find.byType(PhotoBoothBubbleLogo), findsAtLeastNWidgets(1));
     });
 
     testWidgets('4 CUT is selected by default', (tester) async {
-      await tester.pumpWidget(const App());
+      await tester.pumpWidget(App(albumService: FakeAlbumService()));
       expect(find.text('4 CUT'), findsOneWidget);
       // The "Popular" badge is gone from the redesign, so default selection is
       // asserted through the selected card styling instead.
@@ -49,7 +51,7 @@ void main() {
     });
 
     testWidgets('selecting 2 CUT works', (tester) async {
-      await tester.pumpWidget(const App());
+      await tester.pumpWidget(App(albumService: FakeAlbumService()));
       expect(find.text('2 CUT'), findsOneWidget);
       await tester.tap(find.text('2 CUT').first);
       await tester.pump();
@@ -57,7 +59,7 @@ void main() {
     });
 
     testWidgets('Start Photo Booth navigates to camera', (tester) async {
-      await tester.pumpWidget(const App());
+      await tester.pumpWidget(App(albumService: FakeAlbumService()));
       await tester.tap(find.textContaining('Start Photo Booth'));
       await tester.pump();
       await tester.pump();
@@ -67,7 +69,7 @@ void main() {
     });
 
     testWidgets('Start Photo Booth passes selected layout', (tester) async {
-      await tester.pumpWidget(const App());
+      await tester.pumpWidget(App(albumService: FakeAlbumService()));
       await tester.tap(find.text('2 CUT').first);
       await tester.pump();
       await tester.tap(find.textContaining('Start Photo Booth'));
@@ -167,7 +169,7 @@ void main() {
     testWidgets('all four layouts are offered with visual previews', (
       tester,
     ) async {
-      await tester.pumpWidget(const App());
+      await tester.pumpWidget(App(albumService: FakeAlbumService()));
       await tester.pumpAndSettle();
 
       expect(find.text('4 CUT'), findsOneWidget);
@@ -178,7 +180,7 @@ void main() {
 
     testWidgets('selection is exposed to assistive technology', (tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
-      await tester.pumpWidget(const App());
+      await tester.pumpWidget(App(albumService: FakeAlbumService()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('2 CUT'));
@@ -190,7 +192,7 @@ void main() {
     });
 
     testWidgets('choosing a layout updates the summary line', (tester) async {
-      await tester.pumpWidget(const App());
+      await tester.pumpWidget(App(albumService: FakeAlbumService()));
       await tester.pumpAndSettle();
 
       // The redesign dropped the "We will take N photos" summary in favour of
@@ -213,7 +215,7 @@ void main() {
         tester.view.devicePixelRatio = 3;
         addTearDown(tester.view.reset);
 
-        await tester.pumpWidget(const App());
+        await tester.pumpWidget(App(albumService: FakeAlbumService()));
         await tester.pumpAndSettle();
 
         // Branding and the primary action must both be usable.

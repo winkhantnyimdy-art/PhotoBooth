@@ -12,6 +12,8 @@ import '../../core/theme/app_shadows.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/pressable.dart';
+import '../album/album_builder.dart';
+import '../album/album_service.dart';
 import '../home/layout_geometry.dart';
 import '../home/layout_model.dart';
 import '../decorate/decoration_model.dart';
@@ -26,6 +28,8 @@ class ExportScreen extends StatefulWidget {
     required this.decorationState,
     this.exportService,
     this.renderer,
+    this.albumService,
+    this.albumSessionId,
   });
 
   final PhotoLayout layout;
@@ -33,6 +37,14 @@ class ExportScreen extends StatefulWidget {
   final DecorationState decorationState;
   final ExportService? exportService;
   final PhotoStripRenderer? renderer;
+
+  /// Album used for the "Save to Album" action. Null keeps the button out of
+  /// the flow entirely rather than showing an action that cannot work.
+  final AlbumService? albumService;
+
+  /// Id of the album session being edited, so re-saving replaces it instead of
+  /// creating a second copy.
+  final String? albumSessionId;
 
   @override
   State<ExportScreen> createState() => _ExportScreenState();
@@ -46,6 +58,9 @@ class _ExportScreenState extends State<ExportScreen> {
   bool _isPreparing = true;
   bool _isSaving = false;
   bool _isSharing = false;
+  bool _isSavingToAlbum = false;
+  bool _savedToAlbum = false;
+  String? _albumError;
   String? _errorMessage;
 
   @override
@@ -167,6 +182,56 @@ class _ExportScreenState extends State<ExportScreen> {
       if (mounted) {
         setState(() => _isSharing = false);
       }
+    }
+  }
+
+  /// Saves the composition to the offline album so it can be reopened and
+  /// edited later.
+  ///
+  /// This stores the original photos plus the decoration state, not the
+  /// rendered PNG: the album is an editable project, and the export is
+  /// re-rendered from the source when the user asks for it.
+  Future<void> _handleSaveToAlbum() async {
+    final AlbumService? album = widget.albumService;
+    if (album == null || _isSavingToAlbum || _isSaving || _isSharing) return;
+
+    setState(() {
+      _isSavingToAlbum = true;
+      _albumError = null;
+    });
+
+    try {
+      final session = await buildAlbumSession(
+        layout: widget.layout,
+        photos: widget.photos,
+        decorationState: widget.decorationState,
+        existingId: widget.albumSessionId,
+      );
+      final AlbumResult<void> result = await album.saveSession(session);
+      if (!mounted) return;
+      setState(() {
+        _isSavingToAlbum = false;
+        _savedToAlbum = result is AlbumSuccess;
+      });
+      if (result case AlbumFailure(:final String error)) {
+        setState(() => _albumError = error);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.albumSessionId == null
+                  ? 'Saved to your album'
+                  : 'Album session updated',
+            ),
+          ),
+        );
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isSavingToAlbum = false;
+        _albumError = 'Could not save to the album: $error';
+      });
     }
   }
 
@@ -340,6 +405,12 @@ class _ExportScreenState extends State<ExportScreen> {
               saveHint: _exportService.saveHint,
               onSave: _handleSave,
               onShare: _handleShare,
+              albumAvailable: widget.albumService != null,
+              isSavingToAlbum: _isSavingToAlbum,
+              savedToAlbum: _savedToAlbum,
+              albumError: _albumError,
+              isEditingAlbumSession: widget.albumSessionId != null,
+              onSaveToAlbum: _handleSaveToAlbum,
               onMakeAnother: () {
                 Navigator.of(context).popUntil((route) => route.isFirst);
               },
@@ -423,6 +494,12 @@ class _ActionBar extends StatelessWidget {
     required this.onSave,
     required this.onShare,
     required this.onMakeAnother,
+    this.albumAvailable = false,
+    this.isSavingToAlbum = false,
+    this.savedToAlbum = false,
+    this.albumError,
+    this.isEditingAlbumSession = false,
+    this.onSaveToAlbum,
   });
 
   final bool isSaving;
@@ -436,6 +513,13 @@ class _ActionBar extends StatelessWidget {
   final VoidCallback onSave;
   final VoidCallback onShare;
   final VoidCallback onMakeAnother;
+
+  final bool albumAvailable;
+  final bool isSavingToAlbum;
+  final bool savedToAlbum;
+  final String? albumError;
+  final bool isEditingAlbumSession;
+  final VoidCallback? onSaveToAlbum;
 
   @override
   Widget build(BuildContext context) {
@@ -484,7 +568,7 @@ class _ActionBar extends StatelessWidget {
               style: AppText.caption.copyWith(color: AppColors.darkMuted),
             ),
           ],
-          const SizedBox(height: S.sm + S.xs),
+          const SizedBox(height: S.xxs),
           PressableScale(
             enabled: !isSaving && !isSharing,
             child: OutlinedButton.icon(
@@ -505,6 +589,53 @@ class _ActionBar extends StatelessWidget {
               ),
             ),
           ),
+          if (albumAvailable) ...<Widget>[
+            const SizedBox(height: S.sm + S.xs),
+            PressableScale(
+              enabled: !isSaving && !isSharing && !isSavingToAlbum,
+              child: OutlinedButton.icon(
+                onPressed: isSavingToAlbum ? null : onSaveToAlbum,
+                icon: isSavingToAlbum
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.hotPink,
+                        ),
+                      )
+                    : Icon(
+                        savedToAlbum
+                            ? Icons.check_circle_rounded
+                            : Icons.photo_library_rounded,
+                        size: 20,
+                        color: savedToAlbum ? AppColors.popYellow : null,
+                      ),
+                label: Text(
+                  savedToAlbum
+                      ? (isEditingAlbumSession ? 'Album updated' : 'Saved to album')
+                      : (isEditingAlbumSession
+                          ? 'Update album session'
+                          : 'Save to album'),
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  foregroundColor: AppColors.onDark,
+                  side: const BorderSide(color: AppColors.darkLine),
+                  shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+                ),
+              ),
+            ),
+            if (albumError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: S.xs),
+                child: Text(
+                  albumError!,
+                  textAlign: TextAlign.center,
+                  style: AppText.caption.copyWith(color: AppColors.danger),
+                ),
+              ),
+          ],
           const SizedBox(height: S.xxs),
           PressableScale(
             child: TextButton.icon(

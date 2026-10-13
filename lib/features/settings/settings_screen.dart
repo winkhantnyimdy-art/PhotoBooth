@@ -6,10 +6,17 @@ import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
+import '../album/album_scope.dart';
+import '../album/album_screen.dart';
+import '../album/album_service_contract.dart';
+import '../album/album_thumbnail.dart';
 import '../camera/camera_preferences.dart';
 import '../camera/preferences_service.dart';
 
-/// The Settings screen: manages camera preferences and app settings.
+/// Camera and storage preferences.
+///
+/// Every change is written to disk immediately, so a preference survives
+/// closing the app rather than being held in memory until a clean exit.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.preferencesService});
 
@@ -21,38 +28,99 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late CameraPreferences _preferences;
-  bool _loading = true;
+  int? _albumBytes;
+  bool _albumUsageKnown = false;
+  bool _usageRequested = false;
 
   @override
   void initState() {
     super.initState();
-    _loadPreferences();
-  }
-
-  Future<void> _loadPreferences() async {
-    if (!mounted) return;
-    setState(() {
-      _loading = true;
-    });
+    // PreferencesService is already constructed by the caller, so the saved
+    // values can be read synchronously - no loading gate needed.
     _preferences = widget.preferencesService.load();
-    if (mounted) {
-      setState(() {
-        _loading = false;
-      });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Album usage is read from the inherited album, and an inherited widget
+    // must not be read from initState. Guarded so it runs once per mount.
+    if (_usageRequested) return;
+    _usageRequested = true;
+    _loadAlbumUsage();
+  }
+
+  Future<void> _loadAlbumUsage() async {
+    final AlbumService? album = maybeAlbumOf(context);
+    if (album == null) return;
+    final AlbumResult<int?> usage = await album.getStorageUsage();
+    if (!mounted) return;
+    setState(() {
+      _albumBytes = usage is AlbumSuccess<int?> ? usage.value : null;
+      _albumUsageKnown = true;
+    });
+  }
+
+  /// Applies a preference change and persists it immediately.
+  Future<void> _update(CameraPreferences next) async {
+    final CameraPreferences previous = _preferences;
+    // Optimistic: the switch/segment moves on the same frame as the tap.
+    setState(() => _preferences = next);
+    final bool saved = await widget.preferencesService.save(next);
+    if (!mounted) return;
+    if (!saved) {
+      setState(() => _preferences = previous);
+      _showSnackBar('Could not save that setting', isError: true);
     }
   }
 
-  Future<void> _updatePreferences(CameraPreferences newPrefs) async {
-    final success = await widget.preferencesService.save(newPrefs);
+  Future<void> _clearAlbum() async {
+    final AlbumService? album = maybeAlbumOf(context);
+    if (album == null) return;
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Clear the whole album?'),
+        content: const Text(
+          'Every saved session and its original photos will be permanently '
+          'deleted. This cannot be undone.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            child: const Text('Delete everything'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final AlbumResult<void> result = await album.clearAll();
     if (!mounted) return;
-    setState(() {
-      _preferences = newPrefs;
-    });
-    if (success) {
-      _showSnackBar('Settings saved');
-    } else {
-      _showSnackBar('Failed to save settings', isError: true);
+    switch (result) {
+      case AlbumSuccess():
+        _showSnackBar('Album cleared');
+        await _loadAlbumUsage();
+      case AlbumFailure(:final String error):
+        _showSnackBar('Could not clear the album: $error', isError: true);
     }
+  }
+
+  void _openAlbum() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => AlbumScreen(
+          albumService: albumOf(context),
+          photoFiles: createPlatformAlbumPhotoFiles(),
+        ),
+      ),
+    ).then((_) => _loadAlbumUsage());
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -67,79 +135,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.darkSurface,
       body: SafeArea(
         child: Column(
-          children: [
+          children: <Widget>[
             _buildTopBar(),
             Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator(color: AppColors.hotPink))
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(S.lg),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildSection(
-                            title: 'Camera',
-                            icon: Icons.camera_alt_rounded,
-                            children: [
-                              _buildCountdownPicker(),
-                              const SizedBox(height: S.md),
-                              _buildToggleTile(
-                                title: 'Shutter Sound',
-                                subtitle: 'Play a sound when capturing a photo',
-                                icon: Icons.volume_up_rounded,
-                                value: _preferences.shutterSoundEnabled,
-                                onChanged: (v) => _updatePreferences(
-                                  _preferences.copyWith(shutterSoundEnabled: v),
-                                ),
-                              ),
-                              const SizedBox(height: S.md),
-                              _buildToggleTile(
-                                title: 'Flash Animation',
-                                subtitle: 'Show a white flash on capture',
-                                icon: Icons.flash_on_rounded,
-                                value: _preferences.flashAnimationEnabled,
-                                onChanged: (v) => _updatePreferences(
-                                  _preferences.copyWith(flashAnimationEnabled: v),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: S.lg),
-                          _buildSection(
-                            title: 'Storage',
-                            icon: Icons.storage_rounded,
-                            children: [
-                              _buildInfoTile(
-                                title: 'Album Storage',
-                                subtitle: 'Manage saved sessions in the Album screen',
-                                icon: Icons.photo_library_rounded,
-                                onTap: () => Navigator.of(context).pushNamed('/album'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: S.lg),
-                          _buildSection(
-                            title: 'About',
-                            icon: Icons.info_outline_rounded,
-                            children: [
-                              _buildInfoTile(
-                                title: 'Version',
-                                subtitle: '1.0.0',
-                                icon: Icons.tag_rounded,
-                              ),
-                              _buildInfoTile(
-                                title: 'Privacy',
-                                subtitle: 'All data stays on your device. No cloud sync.',
-                                icon: Icons.privacy_tip_rounded,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(S.md, 0, S.md, S.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    _buildCameraSection(),
+                    const SizedBox(height: S.md),
+                    _buildStorageSection(),
+                    const SizedBox(height: S.md),
+                    _buildAboutSection(),
+                  ],
+                ),
+              ),
             ),
             const CheckerboardPattern(height: 20),
           ],
@@ -152,7 +166,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.sm),
       child: Row(
-        children: [
+        children: <Widget>[
           _CircleButton(
             icon: Icons.arrow_back_rounded,
             onPressed: () => Navigator.of(context).maybePop(),
@@ -165,62 +179,184 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          const SizedBox(width: 44), // Balance the back button
+          const SizedBox(width: 44),
         ],
       ),
     );
   }
 
-  Widget _buildSection({
-    required String title,
-    required IconData icon,
-    required List<Widget> children,
-  }) {
+  Widget _buildCameraSection() => _Section(
+        title: 'Camera',
+        icon: Icons.camera_alt_rounded,
+        children: <Widget>[
+          _CountdownPicker(
+            value: _preferences.countdownSeconds,
+            onChanged: (int seconds) => _update(
+              _preferences.copyWith(countdownSeconds: seconds),
+            ),
+          ),
+          const SizedBox(height: S.sm),
+          _ToggleRow(
+            title: 'Shutter sound',
+            subtitle: 'Play a click when a photo is taken',
+            icon: Icons.volume_up_rounded,
+            value: _preferences.shutterSoundEnabled,
+            onChanged: (bool value) => _update(
+              _preferences.copyWith(shutterSoundEnabled: value),
+            ),
+          ),
+          const SizedBox(height: S.sm),
+          _ToggleRow(
+            title: 'Flash animation',
+            subtitle: 'Flash the screen when a photo is taken',
+            icon: Icons.flash_on_rounded,
+            value: _preferences.flashAnimationEnabled,
+            onChanged: (bool value) => _update(
+              _preferences.copyWith(flashAnimationEnabled: value),
+            ),
+          ),
+        ],
+      );
+
+  Widget _buildStorageSection() {
+    final AlbumService? album = maybeAlbumOf(context);
+    final String usage = !_albumUsageKnown
+        ? 'Checking…'
+        : _albumBytes == null
+            ? 'Not measurable in this browser'
+            : formatAlbumBytes(_albumBytes!);
+
+    return _Section(
+      title: 'Storage',
+      icon: Icons.storage_rounded,
+      children: <Widget>[
+        _InfoRow(
+          title: 'Album size',
+          subtitle: '$usage · stored in ${album?.backendName ?? 'local storage'}',
+          icon: Icons.sd_storage_rounded,
+        ),
+        const SizedBox(height: S.sm),
+        _InfoRow(
+          title: 'Album',
+          subtitle: 'Reopen, edit or delete saved sessions',
+          icon: Icons.photo_library_rounded,
+          onTap: album == null ? null : _openAlbum,
+        ),
+        const SizedBox(height: S.sm),
+        _InfoRow(
+          title: 'Clear album',
+          subtitle: 'Delete every saved session and photo',
+          icon: Icons.delete_forever_rounded,
+          destructive: true,
+          onTap: album == null ? null : _clearAlbum,
+        ),
+        const SizedBox(height: S.sm),
+        _Note(
+          'Sessions are stored only on this device. Clearing this site\'s data '
+          'in your browser, or uninstalling the app, will erase them.',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAboutSection() => _Section(
+        title: 'About',
+        icon: Icons.info_outline_rounded,
+        children: <Widget>[
+          const _InfoRow(
+            title: 'Version',
+            subtitle: '1.0.0',
+            icon: Icons.tag_rounded,
+          ),
+          const SizedBox(height: S.sm),
+          const _InfoRow(
+            title: 'Privacy',
+            subtitle: 'No accounts, no cloud, no analytics. Photos never leave '
+                'your device.',
+            icon: Icons.privacy_tip_rounded,
+          ),
+        ],
+      );
+}
+
+class _Section extends StatelessWidget {
+  const _Section({
+    required this.title,
+    required this.icon,
+    required this.children,
+  });
+
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.darkElevated,
         borderRadius: R.all(R.lg),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: AppColors.darkLine),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+        children: <Widget>[
           Padding(
-            padding: const EdgeInsets.fromLTRB(S.md, S.md, S.md, S.xs),
+            padding: const EdgeInsets.fromLTRB(S.md, S.md, S.md, S.sm),
             child: Row(
-              children: [
+              children: <Widget>[
                 Icon(icon, size: 20, color: AppColors.hotPink),
                 const SizedBox(width: S.sm),
-                Text(title, style: AppText.heading.copyWith(color: AppColors.onDark, fontSize: 16)),
+                Text(
+                  title.toUpperCase(),
+                  style: AppText.overline.copyWith(color: AppColors.darkMuted),
+                ),
               ],
             ),
           ),
-          ...children,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(S.md, 0, S.md, S.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildCountdownPicker() {
+class _CountdownPicker extends StatelessWidget {
+  const _CountdownPicker({required this.value, required this.onChanged});
+
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(S.md),
       decoration: BoxDecoration(
-        color: AppColors.surfaceMuted,
+        color: AppColors.darkSurface,
         borderRadius: R.all(R.md),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: AppColors.darkLine),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           Row(
-            children: [
-              Icon(Icons.timer_rounded, size: 20, color: AppColors.onDark),
+            children: <Widget>[
+              const Icon(Icons.timer_rounded, size: 20, color: AppColors.onDark),
               const SizedBox(width: S.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Countdown', style: AppText.label.copyWith(color: AppColors.onDark)),
+                  children: <Widget>[
+                    Text(
+                      'Countdown',
+                      style: AppText.label.copyWith(color: AppColors.onDark),
+                    ),
                     Text(
                       'Seconds before each photo is taken',
                       style: AppText.caption.copyWith(color: AppColors.darkMuted),
@@ -234,113 +370,213 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Wrap(
             spacing: S.sm,
             runSpacing: S.sm,
-            children: CameraPreferences.validCountdownOptions.map((seconds) {
-              final selected = _preferences.countdownSeconds == seconds;
-              return GestureDetector(
-                onTap: () => _updatePreferences(
-                  _preferences.copyWith(countdownSeconds: seconds),
+            children: <Widget>[
+              for (final int seconds in CameraPreferences.validCountdownOptions)
+                _CountdownChip(
+                  seconds: seconds,
+                  selected: value == seconds,
+                  onTap: () => onChanged(seconds),
                 ),
-                child: AnimatedContainer(
-                  duration: AppMotion.of(context, AppMotion.fast),
-                  padding: const EdgeInsets.symmetric(horizontal: S.lg, vertical: S.md),
-                  decoration: BoxDecoration(
-                    color: selected ? AppColors.hotPink : AppColors.surface,
-                    borderRadius: R.pillRadius,
-                    border: Border.all(
-                      color: selected ? AppColors.hotPink : AppColors.line,
-                      width: selected ? 2 : 1,
-                    ),
-                  ),
-                  child: Text(
-                    '$seconds sec',
-                    style: AppText.buttonSmall.copyWith(
-                      color: selected ? AppColors.onAccent : AppColors.onDark,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
+            ],
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildToggleTile({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
+class _CountdownChip extends StatelessWidget {
+  const _CountdownChip({
+    required this.seconds,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final int seconds;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '$seconds second countdown',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          key: ValueKey<String>('countdown-$seconds'),
+          duration: AppMotion.of(context, AppMotion.fast),
+          padding: const EdgeInsets.symmetric(
+            horizontal: S.lg,
+            vertical: S.md,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.hotPink : AppColors.darkSurface,
+            borderRadius: R.pillRadius,
+            border: Border.all(
+              color: selected ? AppColors.hotPink : AppColors.darkLine,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Text(
+            '$seconds sec',
+            style: AppText.buttonSmall.copyWith(
+              color: selected ? AppColors.onAccent : AppColors.onDark,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ToggleRow extends StatelessWidget {
+  const _ToggleRow({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(S.md),
+      padding: const EdgeInsets.fromLTRB(S.md, S.sm, S.sm, S.sm),
       decoration: BoxDecoration(
-        color: AppColors.surfaceMuted,
+        color: AppColors.darkSurface,
         borderRadius: R.all(R.md),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: AppColors.darkLine),
       ),
       child: Row(
-        children: [
+        children: <Widget>[
           Icon(icon, size: 22, color: AppColors.onDark),
           const SizedBox(width: S.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppText.label.copyWith(color: AppColors.onDark)),
-                Text(subtitle, style: AppText.caption.copyWith(color: AppColors.darkMuted)),
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: AppText.label.copyWith(color: AppColors.onDark),
+                ),
+                Text(
+                  subtitle,
+                  style: AppText.caption.copyWith(color: AppColors.darkMuted),
+                ),
               ],
             ),
           ),
           Switch(
+            key: ValueKey<String>('toggle-$title'),
             value: value,
             activeThumbColor: AppColors.hotPink,
-            activeTrackColor: AppColors.hotPink.withValues(alpha: 0.5),
             onChanged: onChanged,
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildInfoTile({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    VoidCallback? onTap,
-  }) {
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    this.onTap,
+    this.destructive = false,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color accent = destructive ? AppColors.danger : AppColors.onDark;
     return Material(
-      color: Colors.transparent,
+      color: AppColors.darkSurface,
+      borderRadius: R.all(R.md),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        borderRadius: R.all(R.md),
         child: Container(
           padding: const EdgeInsets.all(S.md),
           decoration: BoxDecoration(
-            color: AppColors.surfaceMuted,
             borderRadius: R.all(R.md),
-            border: Border.all(color: AppColors.line),
+            border: Border.all(
+              color: destructive
+                  ? AppColors.danger.withValues(alpha: 0.5)
+                  : AppColors.darkLine,
+            ),
           ),
           child: Row(
-            children: [
-              Icon(icon, size: 22, color: AppColors.onDark),
+            children: <Widget>[
+              Icon(icon, size: 22, color: accent),
               const SizedBox(width: S.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: AppText.label.copyWith(color: AppColors.onDark)),
-                    Text(subtitle, style: AppText.caption.copyWith(color: AppColors.darkMuted)),
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(title, style: AppText.label.copyWith(color: accent)),
+                    Text(
+                      subtitle,
+                      style: AppText.caption.copyWith(color: AppColors.darkMuted),
+                    ),
                   ],
                 ),
               ),
               if (onTap != null)
-                Icon(Icons.chevron_right_rounded, color: AppColors.darkMuted),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.darkMuted,
+                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _Note extends StatelessWidget {
+  const _Note(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: S.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.info_outline_rounded, size: 14, color: AppColors.darkMuted),
+          const SizedBox(width: S.xs),
+          Expanded(
+            child: Text(
+              text,
+              style: AppText.caption.copyWith(
+                color: AppColors.darkMuted,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -356,8 +592,8 @@ class _CircleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool enabled = onPressed != null;
     return Material(
-      color: enabled ? AppColors.surface : AppColors.background,
-      shape: CircleBorder(side: BorderSide(color: AppColors.line)),
+      color: AppColors.darkElevated,
+      shape: const CircleBorder(side: BorderSide(color: AppColors.darkLine)),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onPressed,

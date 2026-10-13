@@ -28,10 +28,12 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+  audioplayers: ^6.8.1
   camera: ^0.12.1
   flutter:
     sdk: flutter
   gal: ^2.3.3
+  idb_shim: ^2.9.11
   path_provider: ^2.1.6
   share_plus: ^13.3.1
   shared_preferences: ^2.3.2
@@ -60,6 +62,12 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    # Short mechanical shutter click played when a photo is captured and the
+    # shutter-sound preference is on. Bundled rather than synthesised at
+    # runtime so both the web and native players get the same bytes.
+    - assets/audio/shutter.wav
 
   # To add assets to your application, add an assets section, like this:
   # assets:

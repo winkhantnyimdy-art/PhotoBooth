@@ -1,33 +1,46 @@
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/art/checkerboard.dart';
 import '../../core/art/retro_sticker.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/pressable.dart';
 import '../decorate/decoration_model.dart';
+import '../decorate/decorate_screen.dart';
+import 'album_record.dart';
 import 'album_service.dart';
 import 'album_session.dart';
+import 'album_thumbnail.dart';
 
-/// The Album screen: shows saved sessions in a grid with thumbnails.
+/// The offline album: every session the user has saved, newest first.
 ///
-/// Users can tap a session to reopen it in the Decorate editor,
-/// long-press to delete, or pull to refresh.
+/// Tapping a session reopens it in the Decorate editor with its original
+/// photos and its full decoration state intact, so the user can keep editing
+/// and re-export instead of starting over.
 class AlbumScreen extends StatefulWidget {
-  const AlbumScreen({super.key, required this.albumService});
+  const AlbumScreen({
+    super.key,
+    required this.albumService,
+    required this.photoFiles,
+  });
 
   final AlbumService albumService;
+  final AlbumPhotoFiles photoFiles;
 
   @override
   State<AlbumScreen> createState() => _AlbumScreenState();
 }
 
 class _AlbumScreenState extends State<AlbumScreen> {
-  List<AlbumSession> _sessions = [];
+  List<AlbumSummary> _sessions = <AlbumSummary>[];
   bool _loading = true;
   String? _errorMessage;
+  int? _usageBytes;
+  String? _openingSessionId;
 
   @override
   void initState() {
@@ -35,64 +48,157 @@ class _AlbumScreenState extends State<AlbumScreen> {
     _loadSessions();
   }
 
-  Future<void> _loadSessions() async {
-    if (!mounted) return;
-    setState(() {
-      _loading = true;
-      _errorMessage = null;
-    });
+  @override
+  void dispose() {
+    // Temporary files written while materialising a session are no longer
+    // needed once the album closes.
+    widget.photoFiles.dispose();
+    super.dispose();
+  }
 
-    final result = await widget.albumService.listSessions();
+  Future<void> _loadSessions() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _errorMessage = null;
+      });
+    }
+
+    final AlbumResult<List<AlbumSummary>> result =
+        await widget.albumService.listSessions();
     if (!mounted) return;
 
     switch (result) {
-      case AlbumSuccess(:final value):
+      case AlbumSuccess(:final List<AlbumSummary> value):
         setState(() {
           _sessions = value;
           _loading = false;
         });
-      case AlbumFailure(:final error):
+      case AlbumFailure(:final String error):
         setState(() {
           _errorMessage = error;
           _loading = false;
         });
     }
+
+    await _loadUsage();
   }
 
-  Future<void> _deleteSession(AlbumSession session) async {
-    final confirm = await _showDeleteDialog(context, session.displayName);
+  Future<void> _loadUsage() async {
+    final AlbumResult<int?> usage = await widget.albumService.getStorageUsage();
+    if (!mounted) return;
+    setState(() {
+      _usageBytes = usage is AlbumSuccess<int?> ? usage.value : null;
+    });
+  }
+
+  Future<void> _deleteSession(AlbumSummary session) async {
+    final bool? confirm = await _showDeleteDialog(context, session.displayName);
     if (confirm != true || !mounted) return;
 
-    final result = await widget.albumService.deleteSession(session.id);
+    final AlbumResult<void> result =
+        await widget.albumService.deleteSession(session.id);
     if (!mounted) return;
 
     switch (result) {
       case AlbumSuccess():
         setState(() {
-          _sessions.removeWhere((s) => s.id == session.id);
+          _sessions.removeWhere((AlbumSummary s) => s.id == session.id);
         });
         _showSnackBar('Session deleted');
-      case AlbumFailure(:final error):
-        _showSnackBar('Failed to delete: $error', isError: true);
+        await _loadUsage();
+      case AlbumFailure(:final String error):
+        _showSnackBar('Could not delete: $error', isError: true);
     }
+  }
+
+  Future<void> _clearAll() async {
+    final bool? confirm = await _showClearAllDialog(context, _sessions.length);
+    if (confirm != true || !mounted) return;
+
+    final AlbumResult<void> result = await widget.albumService.clearAll();
+    if (!mounted) return;
+
+    switch (result) {
+      case AlbumSuccess():
+        setState(() => _sessions = <AlbumSummary>[]);
+        _showSnackBar('Album cleared');
+        await _loadUsage();
+      case AlbumFailure(:final String error):
+        _showSnackBar('Could not clear the album: $error', isError: true);
+    }
+  }
+
+  /// Loads the session's original photos, then hands them to the editor.
+  Future<void> _reopenSession(AlbumSummary session) async {
+    if (_openingSessionId != null) return;
+    setState(() => _openingSessionId = session.id);
+
+    final AlbumResult<AlbumSession> loaded =
+        await widget.albumService.loadSession(session.id);
+
+    if (!mounted) {
+      _openingSessionId = null;
+      return;
+    }
+    setState(() => _openingSessionId = null);
+
+    switch (loaded) {
+      case AlbumFailure(:final String error):
+        _showSnackBar(error, isError: true);
+        // The stored rows may now be inconsistent with the blobs, so refresh
+        // the grid to show the damaged state honestly.
+        await _loadSessions();
+      case AlbumSuccess(:final AlbumSession value):
+        await _openInEditor(value);
+    }
+  }
+
+  Future<void> _openInEditor(AlbumSession session) async {
+    final List<XFile> photos = <XFile>[];
+    for (int i = 0; i < session.photoBytes.length; i++) {
+      photos.add(
+        await widget.photoFiles.materialize(
+          session.photoBytes[i],
+          '${session.id}_$i.jpg',
+        ),
+      );
+    }
+
+    if (!mounted) return;
+
+    await Navigator.of(context).push<Object?>(
+      MaterialPageRoute<Object?>(
+        builder: (BuildContext context) => DecorateScreen(
+          layout: session.layout,
+          photos: photos,
+          // Restoring the saved state is what makes this an *edit* rather than
+          // a fresh composition: frame theme, stickers, captions, filter and
+          // adjustments all come back exactly as they were saved.
+          initialDecorationState: session.decorationState,
+          albumSessionId: session.id,
+        ),
+      ),
+    );
   }
 
   Future<bool?> _showDeleteDialog(BuildContext context, String name) {
     return showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete session?'),
-        content: Text('"$name" will be permanently deleted. This cannot be undone.'),
-        actions: [
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Delete this session?'),
+        content: Text(
+          '"$name" and its original photos will be permanently deleted. '
+          'This cannot be undone.',
+        ),
+        actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('Keep it'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.danger,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             child: const Text('Delete'),
           ),
         ],
@@ -100,13 +206,31 @@ class _AlbumScreenState extends State<AlbumScreen> {
     );
   }
 
-  Future<void> _reopenSession(AlbumSession session) async {
-    // Convert photo bytes back to XFile objects for the Decorate screen
-    // We need to create temporary files from the bytes
-    // For now, navigate to DecorateScreen with the session data
-    // The DecorateScreen expects List<XFile>, so we need to handle this
-    // This is a limitation - we'd need to write bytes to temp files first
-    _showSnackBar('Reopening sessions coming soon - need temp file creation');
+  Future<bool?> _showClearAllDialog(BuildContext context, int count) {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Clear the whole album?'),
+        content: Text(
+          count == 0
+              ? 'There is nothing to clear.'
+              : 'All $count saved session${count == 1 ? '' : 's'} and their '
+                  'original photos will be permanently deleted. This cannot '
+                  'be undone.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            child: const Text('Delete everything'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -114,6 +238,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
       SnackBar(
         content: Text(message),
         backgroundColor: isError ? AppColors.danger : null,
+        duration: Duration(seconds: isError ? 5 : 3),
       ),
     );
   }
@@ -121,20 +246,23 @@ class _AlbumScreenState extends State<AlbumScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.darkSurface,
       body: SafeArea(
         child: Column(
-          children: [
+          children: <Widget>[
             _buildTopBar(),
             Expanded(
               child: _loading
-                  ? _buildLoading()
+                  ? const Center(
+                      child: CircularProgressIndicator(color: AppColors.hotPink),
+                    )
                   : _errorMessage != null
                       ? _buildError()
                       : _sessions.isEmpty
                           ? _buildEmptyState()
                           : _buildSessionGrid(),
             ),
+            if (_sessions.isNotEmpty) _buildStorageFooter(),
             const CheckerboardPattern(height: 20),
           ],
         ),
@@ -146,7 +274,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.sm),
       child: Row(
-        children: [
+        children: <Widget>[
           _CircleButton(
             icon: Icons.arrow_back_rounded,
             onPressed: () => Navigator.of(context).maybePop(),
@@ -160,17 +288,44 @@ class _AlbumScreenState extends State<AlbumScreen> {
             ),
           ),
           _CircleButton(
-            icon: Icons.refresh_rounded,
-            onPressed: _loadSessions,
+            icon: Icons.delete_sweep_rounded,
+            tooltip: 'Clear all sessions',
+            onPressed: _sessions.isEmpty ? null : _clearAll,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildLoading() => const Center(
-        child: CircularProgressIndicator(color: AppColors.hotPink),
-      );
+  Widget _buildStorageFooter() {
+    final String usage = _usageBytes == null
+        ? 'Storage used: not measurable in this browser'
+        : 'Storage used: ${formatAlbumBytes(_usageBytes!)}';
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        S.md,
+        S.sm,
+        S.md,
+        S.sm + MediaQuery.paddingOf(context).bottom,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            '$usage  ·  Saved on this device only',
+            textAlign: TextAlign.center,
+            style: AppText.caption.copyWith(color: AppColors.darkMuted, fontSize: 11),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Clearing this site\'s data in your browser will erase the album.',
+            textAlign: TextAlign.center,
+            style: AppText.caption.copyWith(color: AppColors.darkMuted, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildError() => Center(
         child: SingleChildScrollView(
@@ -178,13 +333,13 @@ class _AlbumScreenState extends State<AlbumScreen> {
           child: Container(
             padding: const EdgeInsets.all(S.lg),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: AppColors.darkElevated,
               borderRadius: R.all(R.lg),
               border: Border.all(color: AppColors.line),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: [
+              children: <Widget>[
                 Container(
                   width: 64,
                   height: 64,
@@ -201,7 +356,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
                 ),
                 const SizedBox(height: S.md),
                 Text(
-                  'Failed to load album',
+                  'Could not read the album',
                   textAlign: TextAlign.center,
                   style: AppText.heading.copyWith(color: AppColors.onDark),
                 ),
@@ -216,7 +371,11 @@ class _AlbumScreenState extends State<AlbumScreen> {
                   child: FilledButton.icon(
                     onPressed: _loadSessions,
                     icon: const Icon(Icons.refresh_rounded, size: 20),
-                    label: const Text('Retry'),
+                    label: const Text('Try again'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.hotPink,
+                      shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+                    ),
                   ),
                 ),
               ],
@@ -226,11 +385,11 @@ class _AlbumScreenState extends State<AlbumScreen> {
       );
 
   Widget _buildEmptyState() => Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(S.lg),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
+            children: <Widget>[
               Container(
                 width: 80,
                 height: 80,
@@ -253,14 +412,16 @@ class _AlbumScreenState extends State<AlbumScreen> {
               ),
               const SizedBox(height: S.xs),
               Text(
-                'Capture and decorate photos, then save them to see them here.',
+                'Take photos, decorate them, then tap "Save to Album" on the '
+                'export screen. Saved sessions stay editable here.',
                 textAlign: TextAlign.center,
                 style: AppText.caption.copyWith(color: AppColors.darkMuted),
               ),
               const SizedBox(height: S.lg),
               PressableScale(
                 child: FilledButton.icon(
-                  onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
+                  onPressed: () =>
+                      Navigator.of(context).popUntil((Route<void> r) => r.isFirst),
                   icon: const Icon(Icons.camera_alt_rounded, size: 20),
                   label: const Text('Start Photo Booth'),
                   style: FilledButton.styleFrom(
@@ -279,18 +440,19 @@ class _AlbumScreenState extends State<AlbumScreen> {
         onRefresh: _loadSessions,
         color: AppColors.hotPink,
         child: GridView.builder(
-          padding: const EdgeInsets.fromLTRB(S.md, S.md, S.md, S.md + 20),
+          padding: const EdgeInsets.fromLTRB(S.md, S.md, S.md, S.md),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
             mainAxisSpacing: S.md,
             crossAxisSpacing: S.md,
-            childAspectRatio: 0.85,
+            childAspectRatio: 0.8,
           ),
           itemCount: _sessions.length,
-          itemBuilder: (context, index) {
-            final session = _sessions[index];
+          itemBuilder: (BuildContext context, int index) {
+            final AlbumSummary session = _sessions[index];
             return _SessionCard(
               session: session,
+              busy: _openingSessionId == session.id,
               onTap: () => _reopenSession(session),
               onLongPress: () => _deleteSession(session),
             );
@@ -302,28 +464,39 @@ class _AlbumScreenState extends State<AlbumScreen> {
 class _SessionCard extends StatelessWidget {
   const _SessionCard({
     required this.session,
+    required this.busy,
     required this.onTap,
     required this.onLongPress,
   });
 
-  final AlbumSession session;
+  final AlbumSummary session;
+  final bool busy;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
+    final bool damaged = session.isDamaged;
     return Semantics(
       button: true,
-      label: 'Session ${session.displayName}, ${session.photoCount} photos',
+      label: damaged
+          ? '${session.displayName}, photos missing, cannot reopen'
+          : '${session.displayName}, ${session.photoCount} photos, '
+              'tap to edit',
       child: GestureDetector(
-        onTap: onTap,
+        onTap: busy ? null : onTap,
         onLongPress: onLongPress,
-        child: Container(
+        child: AnimatedContainer(
+          key: ValueKey<String>('album-session-${session.id}'),
+          duration: AppMotion.of(context, AppMotion.fast),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: AppColors.darkElevated,
             borderRadius: R.all(R.md),
-            border: Border.all(color: AppColors.line),
-            boxShadow: [
+            border: Border.all(
+              color: damaged ? AppColors.danger : AppColors.darkLine,
+              width: damaged ? 1.5 : 1,
+            ),
+            boxShadow: <BoxShadow>[
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 8,
@@ -333,33 +506,60 @@ class _SessionCard extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+            children: <Widget>[
               Expanded(
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.memory(
-                        session.thumbnailBytes,
-                        fit: BoxFit.cover,
-                        gaplessPlayback: true,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(12),
                       ),
-                      Positioned(
+                      child: session.thumbnail != null
+                          ? Image.memory(
+                              session.thumbnail!,
+                              fit: BoxFit.cover,
+                              gaplessPlayback: true,
+                            )
+                          : const ColoredBox(color: AppColors.darkElevated),
+                    ),
+                    if (busy)
+                      const ColoredBox(
+                        color: Color(0x66000000),
+                        child: Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: AppColors.hotPink,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (!damaged && !busy)
+                      const Positioned(
                         right: 6,
                         top: 6,
                         child: RetroSticker(type: StickerType.star, size: 20),
                       ),
-                    ],
-                  ),
+                    if (damaged)
+                      const Center(
+                        child: Icon(
+                          Icons.broken_image_rounded,
+                          size: 30,
+                          color: AppColors.danger,
+                        ),
+                      ),
+                  ],
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(S.sm),
+                padding: const EdgeInsets.fromLTRB(S.sm, S.xs, S.sm, S.sm),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
-                  children: [
+                  children: <Widget>[
                     Text(
                       session.displayName,
                       maxLines: 1,
@@ -368,10 +568,17 @@ class _SessionCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${session.photoCount} photo${session.photoCount == 1 ? '' : 's'} · ${session.layout.label}',
+                      damaged
+                          ? 'Photos missing'
+                          : '${session.photoCount} photo'
+                              '${session.photoCount == 1 ? '' : 's'}'
+                              ' · ${albumLayoutLabel(session.layoutName)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppText.caption.copyWith(color: AppColors.darkMuted, fontSize: 10),
+                      style: AppText.caption.copyWith(
+                        color: damaged ? AppColors.danger : AppColors.darkMuted,
+                        fontSize: 10,
+                      ),
                     ),
                   ],
                 ),
@@ -385,16 +592,17 @@ class _SessionCard extends StatelessWidget {
 }
 
 class _CircleButton extends StatelessWidget {
-  const _CircleButton({required this.icon, this.onPressed});
+  const _CircleButton({required this.icon, this.onPressed, this.tooltip});
 
   final IconData icon;
   final VoidCallback? onPressed;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
     final bool enabled = onPressed != null;
-    return Material(
-      color: enabled ? AppColors.surface : AppColors.background,
+    final Widget button = Material(
+      color: enabled ? AppColors.darkElevated : AppColors.darkSurface,
       shape: CircleBorder(side: BorderSide(color: AppColors.line)),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -409,5 +617,6 @@ class _CircleButton extends StatelessWidget {
         ),
       ),
     );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }

@@ -23,6 +23,7 @@ import 'photo_viewfinder.dart';
 import 'preferences_service.dart';
 import 'session_state.dart';
 import 'session_runner.dart';
+import 'shutter_sound.dart';
 import 'timing.dart';
 
 typedef ControllerFactory = CameraController Function(
@@ -40,6 +41,7 @@ class CameraScreen extends StatefulWidget {
     this.timing,
     this.onStateChange,
     this.retakeIndex,
+    this.shutterSound,
   });
 
   final PhotoLayout layout;
@@ -49,6 +51,12 @@ class CameraScreen extends StatefulWidget {
   final Timing? timing;
   final void Function(CameraSessionState state, {int? countdown, int? shot})?
       onStateChange;
+
+  /// Sound played on capture.
+  ///
+  /// Defaults to a platform [ShutterSoundService]; tests inject a fake so the
+  /// capture flow never depends on a registered audio plugin.
+  final ShutterSoundService? shutterSound;
 
   /// When set, the screen captures a **single** frame and pops it instead of
   /// running a full session.
@@ -91,6 +99,28 @@ class _CameraScreenState extends State<CameraScreen>
 
   /// Camera preferences loaded from persistent storage.
   CameraPreferences _preferences = const CameraPreferences();
+
+  /// Shutter click playback.
+  ///
+  /// Created lazily and tolerated as absent: audio is a nicety, and a device
+  /// that cannot play it must still be able to take photos.
+  ShutterSoundService? _shutterSound;
+
+  /// The injected sound service, if a test supplied one.
+  ShutterSoundService? get _injectedSound => widget.shutterSound;
+
+  /// Resolves the sound service, creating the platform one on first use.
+  ShutterSoundService? _soundService() {
+    if (_injectedSound != null) return _injectedSound;
+    if (_shutterSound != null) return _shutterSound;
+    try {
+      _shutterSound = ShutterSoundService();
+    } on Object {
+      // No audio backend: capture continues silently.
+      return null;
+    }
+    return _shutterSound;
+  }
 
   @override
   void initState() {
@@ -200,6 +230,8 @@ class _CameraScreenState extends State<CameraScreen>
     WidgetsBinding.instance.removeObserver(this);
     _cancelToken = CancellationToken(cancelled: true);
     _controller?.dispose();
+    // ignore: discarded_futures
+    _shutterSound?.dispose();
     super.dispose();
   }
 
@@ -265,6 +297,17 @@ class _CameraScreenState extends State<CameraScreen>
       _cancelToken = CancellationToken();
     });
 
+    // Prime audio while this tap's user activation is still live. Without it,
+    // iOS Safari would refuse to play the click seconds later, after the
+    // countdown has finished.
+    //
+    // Deliberately not awaited: arming the audio session must not delay the
+    // capture sequence, and the call has to *start* inside the gesture, not
+    // finish inside it.
+    if (_preferences.shutterSoundEnabled) {
+      _soundService()?.prepare();
+    }
+
     final timing = widget.timing ?? SystemTiming();
 
     // A retake captures exactly one frame: same countdown and flash feedback,
@@ -276,6 +319,11 @@ class _CameraScreenState extends State<CameraScreen>
       takePicture: widget.captureProvider ?? _controller!.takePicture,
       onStep: (state, {countdown, shot}) {
         if (!mounted) return;
+        // The click belongs to the capture itself, not to the countdown.
+        if (state == CameraSessionState.capturing &&
+            _preferences.shutterSoundEnabled) {
+          _soundService()?.play();
+        }
         setState(() {
           _sessionState = state;
           _countdownNumber = countdown ?? 0;
@@ -905,12 +953,55 @@ class _CountdownOverlay extends StatelessWidget {
   }
 }
 
-class _FlashOverlay extends StatelessWidget {
+/// The capture flash: a short white bloom that fades out immediately.
+///
+/// The previous implementation was a flat opaque white box that covered the
+/// viewfinder for the whole duration of the capture step, which read as a
+/// frozen screen rather than a flash. This one peaks instantly and decays, and
+/// it respects the user's "reduced motion" setting by collapsing to a single
+/// dim frame.
+class _FlashOverlay extends StatefulWidget {
   const _FlashOverlay({super.key});
 
   @override
+  State<_FlashOverlay> createState() => _FlashOverlayState();
+}
+
+class _FlashOverlayState extends State<_FlashOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const ColoredBox(color: Colors.white);
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (BuildContext context, Widget? child) {
+          final double t = _controller.value;
+          // Hold near-white for the first fifth of the curve, then fall away, so
+          // the flash reads as a flash and not as a fade-in.
+          final double opacity = t < 0.2 ? 1.0 : (1.0 - (t - 0.2) / 0.8);
+          return ColoredBox(
+            color: AppColors.onDark.withValues(alpha: opacity.clamp(0.0, 1.0)),
+          );
+        },
+      ),
+    );
   }
 }
 

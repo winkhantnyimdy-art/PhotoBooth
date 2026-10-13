@@ -7,11 +7,15 @@ import 'package:photo_booth/core/theme/app_colors.dart';
 import 'package:photo_booth/core/theme/app_theme.dart';
 import 'package:photo_booth/features/home/home_screen.dart';
 
+import 'support/fake_album.dart';
+
 void main() {
   testWidgets('app shell boots and shows the brand', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const App());
+    // The shell now boots through an album bootstrap, so the test supplies an
+    // in-memory album instead of touching IndexedDB or the filesystem.
+    await tester.pumpWidget(App(albumService: FakeAlbumService()));
 
     expect(find.byType(PhotoBoothBubbleLogo), findsOneWidget);
     expect(find.byType(HomeScreen), findsOneWidget);
