@@ -86,6 +86,29 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: S.md),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: S.lg),
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: _HomeShortcut(
+                                  icon: Icons.photo_library_rounded,
+                                  label: 'Album',
+                                  onTap: _openAlbum,
+                                ),
+                              ),
+                              const SizedBox(width: S.sm),
+                              Expanded(
+                                child: _HomeShortcut(
+                                  icon: Icons.settings_rounded,
+                                  label: 'Settings',
+                                  onTap: _openSettings,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: S.md),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: S.lg),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
@@ -123,6 +146,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openAlbum() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => AlbumScreen(
+          albumService: albumOf(context),
+          photoFiles: createPlatformAlbumPhotoFiles(),
+        ),
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const _SettingsRoute()),
+    );
+  }
+
   Widget _buildTopBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.sm),
@@ -130,16 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: <Widget>[
           _CircleButton(
             icon: Icons.photo_library_rounded,
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (BuildContext context) => AlbumScreen(
-                    albumService: albumOf(context),
-                    photoFiles: createPlatformAlbumPhotoFiles(),
-                  ),
-                ),
-              );
-            },
+            onPressed: _openAlbum,
             tooltip: 'Album',
           ),
           Expanded(
@@ -152,16 +183,70 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           _CircleButton(
             icon: Icons.settings_rounded,
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const _SettingsRoute(),
-                ),
-              );
-            },
+            onPressed: _openSettings,
             tooltip: 'Settings',
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A labelled shortcut on the Home screen.
+///
+/// Settings used to be reachable only through a bare gear icon in the top bar.
+/// An icon alone is easy to miss on a phone, and its `Tooltip` never appears
+/// on a touch device, so the setting was effectively undiscoverable. Both
+/// shortcuts now carry a visible text label as well as the icon.
+class _HomeShortcut extends StatelessWidget {
+  const _HomeShortcut({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: PressableScale(
+        child: Material(
+          color: AppColors.darkElevated,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              // Comfortably past the 44pt minimum touch target.
+              padding: const EdgeInsets.symmetric(
+                vertical: S.md,
+                horizontal: S.sm,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Icon(icon, size: 20, color: AppColors.onDark),
+                  const SizedBox(width: S.xs),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.buttonSmall.copyWith(
+                        color: AppColors.onDark,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

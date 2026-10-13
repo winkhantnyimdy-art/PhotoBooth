@@ -3,9 +3,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
+import '../../features/decorate/decoration_model.dart';
 import '../../features/decorate/frame_theme.dart';
 import '../theme/app_colors.dart';
 import 'deco_scatter.dart';
+import 'frame_decorations.dart';
 
 /// Paints a [FrameTheme]'s complete chrome: paper, border artwork, corner
 /// accents and the footer wordmark.
@@ -26,6 +28,13 @@ import 'deco_scatter.dart';
 /// [rect], i.e. right over the photo grid. Callers that draw their own footer
 /// band (the Decorate preview does) pass `includeWordmark: false` so the
 /// wordmark is neither painted twice nor painted over the photos.
+///
+/// [paint] is also the only place the user's paper colour and border style are
+/// applied. Those two controls used to be decorative only: the Decorate screen
+/// stored them on the state and the album round-tripped them faithfully, but
+/// nothing ever drew them, so tapping "Film Edge" or a paper swatch changed
+/// nothing on screen or in the export. Keeping the application here means the
+/// preview and the PNG cannot drift apart again.
 abstract final class FrameThemePainter {
   /// Paints the theme chrome into [rect].
   ///
@@ -34,17 +43,33 @@ abstract final class FrameThemePainter {
   ///
   /// [includeWordmark] paints the wordmark centred on [rect]. Pass false when
   /// the caller draws the footer wordmark itself into a dedicated footer band.
+  ///
+  /// [paper] overrides the theme's own paper colour, which is how the
+  /// Decorate screen's "Paper colour" swatches become visible. Pass null to keep
+  /// the theme's paper.
+  ///
+  /// [frameStyle] paints the user-selected border rail. It is clipped out of
+  /// the photo area - [contentInset] is how far in the photo cells start - so
+  /// no border style can ever cover a face, whatever it draws.
+  ///
+  /// [scale] shrinks fixed-size rail metrics for the small preview.
   static void paint(
     ui.Canvas canvas,
     ui.Rect rect,
     FrameTheme theme, {
     double wordmarkSize = 36,
     bool includeWordmark = true,
+    Color? paper,
+    FrameStyle? frameStyle,
+    double contentInset = 0,
+    double scale = 1.0,
   }) {
     final FrameThemeSpec spec = theme.spec;
 
-    // 1. Paper.
-    canvas.drawRect(rect, ui.Paint()..color = spec.paper);
+    // 1. Paper. The user's colour choice wins over the theme's own so the
+    //    swatches do something visible; the theme's border and accents still
+    //    draw on top, so the frame identity is not lost.
+    canvas.drawRect(rect, ui.Paint()..color = paper ?? spec.paper);
 
     // 2. Border artwork, per theme.
     switch (theme) {
@@ -66,10 +91,51 @@ abstract final class FrameThemePainter {
         _birthdayBorder(canvas, rect, spec);
     }
 
-    // 3. Footer wordmark.
+    // 3. The user's border rail, confined to the margin outside the photos.
+    if (frameStyle != null) {
+      _paintFrameStyleOutsidePhotos(canvas, rect, frameStyle, contentInset, scale);
+    }
+
+    // 4. Footer wordmark.
     if (includeWordmark) {
       paintWordmark(canvas, rect, theme, wordmarkSize);
     }
+  }
+
+  /// Draws [style] around the strip but never over the photo cells.
+  ///
+  /// The rail is clipped to "everything in [rect] except the photo area", so a
+  /// style that fills or scatters (Polka Dot, Scallop) can only ever appear in
+  /// the margin. That is what keeps decorative pattern off faces and image
+  /// content regardless of which style is chosen.
+  static void _paintFrameStyleOutsidePhotos(
+    ui.Canvas canvas,
+    ui.Rect rect,
+    FrameStyle style,
+    double contentInset,
+    double scale,
+  ) {
+    // A caller that forgets the inset must not silently drop the rail, so fall
+    // back to a proportional band.
+    final double inset = contentInset > 0 ? contentInset : rect.width * 0.04;
+    final ui.Rect content = rect.deflate(inset);
+
+    canvas.save();
+    canvas.clipPath(
+      ui.Path.combine(
+        ui.PathOperation.difference,
+        ui.Path()..addRect(rect),
+        ui.Path()
+          ..addRRect(
+            ui.RRect.fromRectAndRadius(
+              content,
+              const ui.Radius.circular(8),
+            ),
+          ),
+      ),
+    );
+    FrameDecorations.paintFrame(canvas, rect, style, scale: scale);
+    canvas.restore();
   }
 
   /// Paints just the theme's footer wordmark, centred in [footer].

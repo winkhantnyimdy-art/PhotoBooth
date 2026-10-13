@@ -59,11 +59,17 @@ class PhotoStripRenderer {
       // 1. Frame background — the chosen premium theme paints paper + border +
       // wordmark. The same FrameThemePainter runs in the Decorate preview, so
       // the export is pixel-faithful to what the user saw.
+      //
+      // The user's own paper colour and border rail are applied in the same
+      // call, because they used to be stored on the state and drawn nowhere.
       FrameThemePainter.paint(
         canvas,
         ui.Rect.fromLTWH(0, 0, exportWidth, height),
         decorationState.frameTheme,
         wordmarkSize: 36,
+        paper: decorationState.background.color,
+        frameStyle: decorationState.frameStyle,
+        contentInset: PhotoStripGeometry.outerPadding,
       );
 
       // The colour matrix shared by the preview and this export. Identity when

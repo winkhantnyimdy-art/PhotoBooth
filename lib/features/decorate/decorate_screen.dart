@@ -1155,6 +1155,10 @@ class _Composition extends StatelessWidget {
                           theme: state.frameTheme,
                           wordmarkSize:
                               13 * (width / PhotoStripGeometry.exportWidth),
+                          paper: state.background.color,
+                          frameStyle: state.frameStyle,
+                          contentInset: pad,
+                          scale: scale,
                         ),
                       ),
                     ),
@@ -1254,10 +1258,29 @@ class _Composition extends StatelessWidget {
 }
 
 class _FrameThemePainter extends CustomPainter {
-  const _FrameThemePainter({required this.theme, this.wordmarkSize = 36});
+  const _FrameThemePainter({
+    required this.theme,
+    this.wordmarkSize = 36,
+    this.paper,
+    this.frameStyle,
+    this.contentInset = 0,
+    this.scale = 1.0,
+  });
 
   final FrameTheme theme;
   final double wordmarkSize;
+
+  /// The paper colour the user picked, overriding the theme's own.
+  final Color? paper;
+
+  /// The border rail the user picked, drawn outside the photo cells only.
+  final FrameStyle? frameStyle;
+
+  /// Distance from the strip edge to the photo cells.
+  final double contentInset;
+
+  /// Preview width / export width, so rail metrics scale down.
+  final double scale;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1268,12 +1291,21 @@ class _FrameThemePainter extends CustomPainter {
       wordmarkSize: wordmarkSize,
       // The footer band owns the wordmark; see _BrandingStrip.
       includeWordmark: false,
+      paper: paper,
+      frameStyle: frameStyle,
+      contentInset: contentInset,
+      scale: scale,
     );
   }
 
   @override
   bool shouldRepaint(covariant _FrameThemePainter old) =>
-      old.theme != theme || old.wordmarkSize != wordmarkSize;
+      old.theme != theme ||
+      old.wordmarkSize != wordmarkSize ||
+      old.paper != paper ||
+      old.frameStyle != frameStyle ||
+      old.contentInset != contentInset ||
+      old.scale != scale;
 }
 
 class _PhotoGrid extends StatelessWidget {

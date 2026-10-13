@@ -13,10 +13,25 @@ import '../theme/app_colors.dart';
 /// any preview scale or at full export resolution.
 abstract final class FrameDecorations {
   /// Dispatches to the painter for [style], sized relative to [rect].
-  static void paintFrame(ui.Canvas canvas, ui.Rect rect, FrameStyle style) {
+  ///
+  /// [scale] shrinks the styles whose metrics are fixed numbers rather than
+  /// derived from [rect], so a rail keeps the same visual weight in the small
+  /// Decorate preview as it does in the full-size export.
+  static void paintFrame(
+    ui.Canvas canvas,
+    ui.Rect rect,
+    FrameStyle style, {
+    double scale = 1.0,
+  }) {
     switch (style) {
       case FrameStyle.polkaDot:
-        paintPolkaDotFrame(canvas, rect);
+        paintPolkaDotFrame(
+          canvas,
+          rect,
+          borderWidth: 12 * scale,
+          dotSpacing: 20 * scale,
+          dotRadius: 4 * scale,
+        );
       case FrameStyle.filmEdge:
         paintFilmEdgeFrame(canvas, rect);
       case FrameStyle.scallop:
@@ -26,6 +41,14 @@ abstract final class FrameDecorations {
     }
   }
 
+  /// A polka-dot rail running around the border of [rect].
+  ///
+  /// The dots are confined to the rail. They used to be laid out across the
+  /// whole inner rectangle, which meant they were drawn over whatever sat
+  /// beneath - including the captured photos, whenever this painter was used
+  /// as a foreground painter. The rail is built with an even-odd fill of the
+  /// outer and inner radii, so the middle stays clear no matter what is behind
+  /// it.
   static void paintPolkaDotFrame(
     ui.Canvas canvas,
     ui.Rect rect, {
@@ -43,24 +66,37 @@ abstract final class FrameDecorations {
       ..color = AppColors.surface
       ..style = ui.PaintingStyle.fill;
 
-    final ui.RRect rrect = ui.RRect.fromRectAndRadius(
-      rect,
-      const ui.Radius.circular(16),
-    );
-    canvas.drawRRect(rrect, borderPaint);
-
-    final ui.RRect inner = ui.RRect.fromRectAndRadius(
-      rect.deflate(borderWidth / 2),
-      const ui.Radius.circular(10),
+    canvas.drawRRect(
+      ui.RRect.fromRectAndRadius(rect, const ui.Radius.circular(16)),
+      borderPaint,
     );
 
-    for (double y = inner.top + dotSpacing / 2; y < inner.bottom; y += dotSpacing) {
-      for (double x = inner.left + dotSpacing / 2; x < inner.right; x += dotSpacing) {
-        if (inner.contains(ui.Offset(x, y))) {
-          canvas.drawCircle(ui.Offset(x, y), dotRadius, dotPaint);
-        }
+    // The rail is the ring between the outer edge and the inner edge. Painting
+    // the dots inside a clip of that ring is what keeps them off the photos.
+    final ui.Path rail = ui.Path()
+      ..fillType = ui.PathFillType.evenOdd
+      ..addRRect(
+        ui.RRect.fromRectAndRadius(rect, const ui.Radius.circular(16)),
+      )
+      ..addRRect(
+        ui.RRect.fromRectAndRadius(
+          rect.deflate(borderWidth),
+          const ui.Radius.circular(10),
+        ),
+      );
+
+    canvas.save();
+    canvas.clipPath(rail);
+    for (double x = rect.left + dotSpacing / 2;
+        x < rect.right;
+        x += dotSpacing) {
+      for (double y = rect.top + dotSpacing / 2;
+          y < rect.bottom;
+          y += dotSpacing) {
+        canvas.drawCircle(ui.Offset(x, y), dotRadius, dotPaint);
       }
     }
+    canvas.restore();
   }
 
   /// Vintage film rails down both long edges, with sprocket holes.

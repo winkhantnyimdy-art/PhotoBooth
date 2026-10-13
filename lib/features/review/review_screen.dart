@@ -176,58 +176,127 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 
   Widget _buildActions(BuildContext context) {
+    // The actions sit on the dark review stage, below the scrollable preview,
+    // and must clear the home indicator on devices with a bottom safe area.
     return Container(
       padding: EdgeInsets.fromLTRB(
-        S.lg,
         S.md,
-        S.lg,
+        S.md,
+        S.md,
         S.md + MediaQuery.paddingOf(context).bottom,
       ),
       decoration: const BoxDecoration(color: AppColors.darkSurface),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: PressableScale(
-              enabled: !_retaking,
-              child: OutlinedButton.icon(
-                onPressed: _retaking ? null : _retakeSelected,
-                icon: _retaking
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.onDark,
-                        ),
-                      )
-                    : const Icon(Icons.refresh_rounded, size: 20),
-                label: const Text('Retake'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                  foregroundColor: AppColors.onDark,
-                  disabledForegroundColor: AppColors.darkMuted,
-                  side: const BorderSide(color: AppColors.darkLine, width: 2),
-                  shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          // Side by side while there is room, stacked when the viewport is
+          // genuinely narrow, so neither label is ever clipped on a small
+          // iPhone or in a cramped browser viewport.
+          final bool stacked = constraints.maxWidth < 300;
+          if (stacked) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                _RetakeButton(
+                  busy: _retaking,
+                  onPressed: _retakeSelected,
+                ),
+                const SizedBox(height: S.sm),
+                _NextButton(onPressed: _next),
+              ],
+            );
+          }
+          return Row(
+            children: <Widget>[
+              Expanded(
+                child: _RetakeButton(
+                  busy: _retaking,
+                  onPressed: _retakeSelected,
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: S.md),
-          Expanded(
-            child: PressableScale(
-              child: FilledButton.icon(
-                onPressed: _next,
-                icon: const Icon(Icons.arrow_forward_rounded, size: 20),
-                label: const Text('Next'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                  backgroundColor: AppColors.hotPink,
-                  shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+              const SizedBox(width: S.sm),
+              Expanded(child: _NextButton(onPressed: _next)),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// The secondary action: an outlined pill on the dark stage.
+///
+/// The app theme paints every `OutlinedButton` with a near-white
+/// `backgroundColor`, so this button has to set its own dark fill. Without it
+/// the label rendered white-on-white and was effectively invisible on the
+/// iPhone.
+class _RetakeButton extends StatelessWidget {
+  const _RetakeButton({required this.busy, required this.onPressed});
+
+  final bool busy;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      enabled: !busy,
+      child: OutlinedButton.icon(
+        onPressed: busy ? null : onPressed,
+        icon: busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.onDark,
                 ),
-              ),
-            ),
-          ),
-        ],
+              )
+            : const Icon(Icons.refresh_rounded, size: 20),
+        label: const Text(
+          'Retake',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        style: OutlinedButton.styleFrom(
+          // Dark fill + darkMuted border keeps "Retake" legible while staying
+          // visually distinct from the solid pink "Next".
+          backgroundColor: AppColors.darkElevated,
+          foregroundColor: AppColors.onDark,
+          disabledBackgroundColor: AppColors.darkSurface,
+          disabledForegroundColor: AppColors.darkMuted,
+          minimumSize: const Size(0, 52),
+          padding: const EdgeInsets.symmetric(horizontal: S.sm),
+          side: const BorderSide(color: AppColors.darkMuted, width: 2),
+          shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+        ),
+      ),
+    );
+  }
+}
+
+/// The primary action: a solid pink pill, clearly distinct from Retake.
+class _NextButton extends StatelessWidget {
+  const _NextButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      child: FilledButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(Icons.arrow_forward_rounded, size: 20),
+        label: const Text(
+          'Next',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(0, 52),
+          padding: const EdgeInsets.symmetric(horizontal: S.sm),
+          backgroundColor: AppColors.hotPink,
+          foregroundColor: AppColors.onDark,
+          shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+        ),
       ),
     );
   }
@@ -336,15 +405,25 @@ class _StripPreview extends StatelessWidget {
   }
 }
 
+/// A decorative dot rail around the review preview.
+///
+/// This is a *foreground* painter, so it draws on top of the photos. The rail
+/// is confined to the border band by `FrameDecorations.paintPolkaDotFrame`,
+/// which clips the dots to a ring; before that clip existed the dots were laid
+/// out across the whole rectangle and buried the captured photos under a dense
+/// white field, while the thumbnail row underneath still showed them fine.
 class _PolkaDotFramePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
+    final double scale = size.width / PhotoStripGeometry.exportWidth;
     FrameDecorations.paintPolkaDotFrame(
       canvas,
       Rect.fromLTWH(0, 0, size.width, size.height),
-      borderWidth: 10,
-      dotSpacing: 18,
-      dotRadius: 3.5,
+      // The preview is a fraction of export size, so a fixed 10px rail ate a
+      // large slice of a small phone preview. Derive it instead.
+      borderWidth: 10 * scale,
+      dotSpacing: 18 * scale,
+      dotRadius: 3.5 * scale,
     );
   }
 

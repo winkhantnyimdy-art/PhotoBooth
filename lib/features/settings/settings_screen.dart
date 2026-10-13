@@ -218,8 +218,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: S.sm),
           _ToggleRow(
             title: 'Mirror selfies',
-            subtitle: 'Save front-camera photos as they look in the mirror. '
-                'Back camera is never mirrored.',
+            subtitle: 'On = front-camera photos are saved mirrored, as they '
+                'look in the viewfinder. Off = saved in natural orientation. '
+                'The back camera is never mirrored either way.',
             icon: Icons.flip_camera_android_rounded,
             value: _preferences.mirrorSelfies,
             onChanged: (bool value) => _update(
