@@ -9,6 +9,7 @@ import '../../core/art/retro_sticker.dart';
 import '../../core/art/text_overlay.dart';
 import '../../core/filters/film_grain.dart';
 import '../../core/media/photo_source.dart';
+import '../../core/media/preview_decode.dart';
 import '../../core/filters/photo_filter.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
@@ -1335,6 +1336,16 @@ class _PhotoGrid extends StatelessWidget {
           gutter: gutter,
         );
 
+        // Decode each cell at the size it is actually painted at. Without this
+        // every cell held a full-resolution bitmap: ~48 MB for a 12 MP capture,
+        // so a four-shot strip pinned ~190 MB and the editor stuttered on
+        // iPhone Safari. RepaintBoundary keeps a sticker drag or a caption
+        // edit from re-rasterising the photos underneath.
+        final int? decodeWidth = PreviewDecode.forWidth(
+          cell.width,
+          MediaQuery.devicePixelRatioOf(context),
+        );
+
         return Wrap(
           spacing: gutter,
           runSpacing: gutter,
@@ -1342,14 +1353,17 @@ class _PhotoGrid extends StatelessWidget {
           runAlignment: WrapAlignment.center,
           children: <Widget>[
             for (int i = 0; i < photos.length; i++)
-              ClipRRect(
-                borderRadius: R.all(1.5 * gutter / S.sm),
-                child: SizedBox(
-                  width: cell.width,
-                  height: cell.height,
-                  child: _FilteredImage(
-                    photo: photos[i],
-                    colorFilter: colorFilter,
+              RepaintBoundary(
+                child: ClipRRect(
+                  borderRadius: R.all(1.5 * gutter / S.sm),
+                  child: SizedBox(
+                    width: cell.width,
+                    height: cell.height,
+                    child: _FilteredImage(
+                      photo: photos[i],
+                      colorFilter: colorFilter,
+                      decodeWidth: decodeWidth,
+                    ),
                   ),
                 ),
               ),
@@ -1361,14 +1375,22 @@ class _PhotoGrid extends StatelessWidget {
 }
 
 class _FilteredImage extends StatelessWidget {
-  const _FilteredImage({required this.photo, required this.colorFilter});
+  const _FilteredImage({
+    required this.photo,
+    required this.colorFilter,
+    this.decodeWidth,
+  });
 
   final XFile photo;
   final ColorFilter? colorFilter;
 
+  /// Caps the decode so a 12 MP frame does not become a 48 MB bitmap just to
+  /// fill one preview cell. Null keeps the full-resolution decode.
+  final int? decodeWidth;
+
   @override
   Widget build(BuildContext context) {
-    final Widget image = PhotoImage(photo: photo);
+    final Widget image = PhotoImage(photo: photo, decodeWidth: decodeWidth);
     if (colorFilter == null) return image;
     return ColorFiltered(colorFilter: colorFilter!, child: image);
   }
@@ -1788,7 +1810,18 @@ class _FilterThumb extends StatelessWidget {
       const PhotoAdjustments(),
     );
     final Widget base = sample != null
-        ? PhotoImage(photo: sample!, width: 64, height: 64)
+        // A 64 px chip was decoding the whole 12 MP frame. Capping the decode
+        // here is the single biggest win in the editor: this row alone held as
+        // many full-size bitmaps as there were filters.
+        ? PhotoImage(
+            photo: sample!,
+            width: 64,
+            height: 64,
+            decodeWidth: PreviewDecode.forSize(
+              64,
+              MediaQuery.devicePixelRatioOf(context),
+            ),
+          )
         : Container(
             width: 64,
             height: 64,

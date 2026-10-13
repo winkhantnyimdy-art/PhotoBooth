@@ -107,6 +107,11 @@ Future<Uint8List?> flipHorizontally(Uint8List bytes) async {
 ///
 /// Delegates to [Image.file] so the existing decode/cache behaviour is
 /// unchanged for the native builds.
+///
+/// [decodeWidth] caps the decode. Left null (the default) the photo is decoded
+/// at full resolution, which is what the exporter wants; pass a value from
+/// [PreviewDecode] for interactive previews so a 12 MP frame does not become a
+/// 48 MB bitmap just to fill a 340 px cell.
 class PhotoImage extends StatelessWidget {
   const PhotoImage({
     super.key,
@@ -116,6 +121,7 @@ class PhotoImage extends StatelessWidget {
     this.height,
     this.alignment = Alignment.center,
     this.filterQuality = FilterQuality.medium,
+    this.decodeWidth,
   });
 
   final XFile photo;
@@ -125,10 +131,24 @@ class PhotoImage extends StatelessWidget {
   final AlignmentGeometry alignment;
   final FilterQuality filterQuality;
 
+  /// Maximum width in pixels to decode this photo at, or null for full size.
+  final int? decodeWidth;
+
   @override
   Widget build(BuildContext context) {
-    return Image.file(
-      File(photo.path),
+    final ImageProvider<Object> provider = decodeWidth == null
+        ? FileImage(File(photo.path))
+        // ResizeImage keys its cache entry on the target size, so the small
+        // preview never forces the full-resolution decode to exist at all.
+        // A null height keeps the source aspect ratio intact.
+        : ResizeImage.resizeIfNeeded(
+            decodeWidth,
+            null,
+            FileImage(File(photo.path)),
+          );
+
+    return Image(
+      image: provider,
       fit: fit,
       width: width,
       height: height,

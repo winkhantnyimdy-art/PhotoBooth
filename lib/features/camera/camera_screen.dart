@@ -659,7 +659,14 @@ class _CameraScreenState extends State<CameraScreen>
                 child: PhotoViewfinder(
                   controller: controller,
                   borderRadius: R.all(R.lg),
-                  // Shows exactly the window that becomes one photo cell.
+                  // The preview is fitted to this window and the exporter crops
+                  // to the same shape, so both come from one value and the
+                  // framing the user sees is the framing they get.
+                  outputAspect:
+                      PhotoStripGeometry.cellWidth(widget.layout) /
+                      PhotoStripGeometry.cellHeight(widget.layout),
+                  // Preview orientation follows the saved photo exactly.
+                  mirrorSelfies: _preferences.mirrorSelfies,
                   overlay: ViewfinderCropGuide(
                     outputAspect:
                         PhotoStripGeometry.cellWidth(widget.layout) /

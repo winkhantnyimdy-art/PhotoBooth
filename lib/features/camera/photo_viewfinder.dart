@@ -1,9 +1,16 @@
+import 'dart:math' as math;
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import 'camera_geometry.dart';
 import 'selfie_mirroring.dart';
+
+/// Shape of one exported photo cell, used when the caller does not say.
+///
+/// Matches `PhotoStripGeometry.cellAspect`, i.e. 3:4 portrait.
+const double kDefaultCaptureAspect = 3.0 / 4.0;
 
 /// A full-bleed, orientation-independent camera viewfinder.
 ///
@@ -16,10 +23,18 @@ import 'selfie_mirroring.dart';
 /// This widget instead:
 /// 1. normalizes the stream to an upright aspect using [CameraGeometry], which
 ///    only looks at the frame's real dimensions;
-/// 2. draws it with `FittedBox(fit: BoxFit.cover)` so it always fills the whole
-///    viewport - the overflow is cropped, never letterboxed;
-/// 3. rotates to upright and mirrors the front camera consistently, so what
-///    you see is what the exported photo contains.
+/// 2. fits that upright stream so it **covers the crop window** - the region the
+///    exporter will actually keep - rather than covering the whole viewport;
+/// 3. mirrors exactly when the stored photo will be mirrored, so the preview and
+///    the capture agree.
+///
+/// ## Why the feed is fitted to the crop window
+///
+/// Fitting the stream to the entire viewport showed the user far more than
+/// survives the export. On a 393x852 viewport the 3:4 crop window is only
+/// 393x524, so roughly 40% of the height the user was framing against was
+/// cropped away after the fact - which reads as "the framing does not match".
+/// Fitting to the window means the preview is a true preview of the capture.
 ///
 /// The underlying preview surface is produced by the plugin
 /// ([CameraController.buildPreview]); this widget only controls how it is
@@ -31,6 +46,8 @@ class PhotoViewfinder extends StatelessWidget {
     this.shootInPortrait = true,
     this.borderRadius = BorderRadius.zero,
     this.overlay,
+    this.outputAspect = kDefaultCaptureAspect,
+    this.mirrorSelfies = true,
   });
 
   final CameraController controller;
@@ -42,6 +59,13 @@ class PhotoViewfinder extends StatelessWidget {
 
   /// Optional guides drawn on top of the feed (crop windows, rule of thirds).
   final Widget? overlay;
+
+  /// width / height of the region that becomes one photo cell.
+  final double outputAspect;
+
+  /// The "Mirror selfies" preference, which decides preview orientation so it
+  /// matches the saved photo.
+  final bool mirrorSelfies;
 
   @override
   Widget build(BuildContext context) {
@@ -59,17 +83,16 @@ class PhotoViewfinder extends StatelessWidget {
       shootInPortrait: shootInPortrait,
     );
     final bool mirrored = SelfieMirroring.shouldMirrorPreview(
-      controller.description.lensDirection,
+      direction: controller.description.lensDirection,
+      mirrorSelfies: mirrorSelfies,
     );
 
     Widget feed = controller.buildPreview();
 
-    // Front cameras read as a mirror to the user; back cameras must not be
-    // flipped. This is preview-only: the captured bytes are normalised
-    // separately, at capture time, by CameraScreen via [SelfieMirroring].
-    // Relying on this transform alone (as this widget originally assumed) left
-    // the saved photo in whatever orientation the platform produced, which is
-    // how front-camera selfies came out mirrored on iOS Safari.
+    // Orientation is decided in exactly one place, [SelfieMirroring], from the
+    // same preference that decides the saved bytes. A widget-level transform
+    // cannot influence `takePicture()`, which is why this used to disagree
+    // with the capture on iOS Safari.
     if (mirrored) {
       feed = Transform(
         alignment: Alignment.center,
@@ -82,46 +105,60 @@ class PhotoViewfinder extends StatelessWidget {
       feed = RotatedBox(quarterTurns: quarterTurns, child: feed);
     }
 
-    // Size the feed explicitly instead of letting FittedBox measure it
+    // Size the feed explicitly instead of letting it measure itself
     // unconstrained. `buildPreview()` may report no intrinsic size (and in
-    // tests never does), and an unconstrained measure collapses to zero,
-    // which is how a blank viewfinder happens.
-    //
-    // `coverSize` returns a box at least as large as the viewport on both axes,
-    // so the feed always covers the frame and the overflow is cropped.
+    // tests never does), and an unconstrained measure collapses to zero, which
+    // is how a blank viewfinder happens.
     Widget scaled = LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final Size viewport = Size(
           constraints.maxWidth,
           constraints.maxHeight,
         );
-        final Size drawn = CameraGeometry.coverSize(
+
+        // The region the exporter keeps.
+        final Rect window = CameraGeometry.cropWindow(
           viewport: viewport,
+          outputAspect: outputAspect,
+        );
+
+        // Fill that window by covering it with the upright stream. `coverSize`
+        // is at least as large as the window on both axes, so the window is
+        // always full - never letterboxed, never a partial image.
+        final Size drawn = CameraGeometry.coverSize(
+          viewport: window.size,
           sourceAspect: uprightAspect,
         );
-        return OverflowBox(
-          alignment: Alignment.center,
-          minWidth: drawn.width,
-          maxWidth: drawn.width,
-          minHeight: drawn.height,
-          maxHeight: drawn.height,
-          child: SizedBox(
-            key: const ValueKey('photobooth-feed-box'),
-            width: drawn.width,
-            height: drawn.height,
-            child: feed,
-          ),
+
+        // A cover fit overflows on exactly one axis and the overflow is
+        // centred, so shifting by half of it puts the window over the centre of
+        // the feed - exactly the centre crop the renderer performs.
+        final double overflowX = math.max(0.0, (drawn.width - window.width) / 2);
+        final double overflowY = math.max(0.0, (drawn.height - window.height) / 2);
+
+        return Stack(
+          clipBehavior: Clip.hardEdge,
+          children: <Widget>[
+            Positioned(
+              left: window.left - overflowX,
+              top: window.top - overflowY,
+              width: drawn.width,
+              height: drawn.height,
+              child: SizedBox(
+                key: const ValueKey('photobooth-feed-box'),
+                width: drawn.width,
+                height: drawn.height,
+                child: feed,
+              ),
+            ),
+            if (overlay != null) Positioned.fill(child: overlay!),
+          ],
         );
       },
     );
 
-    // FittedBox inside an unbounded-ish box can overflow; clip to the viewport so
-    // no part of the stream spills under neighbouring chrome.
+    // Clip so no part of the stream spills under neighbouring chrome.
     scaled = ClipRect(child: scaled);
-
-    if (overlay != null) {
-      scaled = Stack(fit: StackFit.expand, children: <Widget>[scaled, overlay!]);
-    }
 
     if (borderRadius == BorderRadius.zero) return scaled;
     return ClipRRect(borderRadius: borderRadius, child: scaled);

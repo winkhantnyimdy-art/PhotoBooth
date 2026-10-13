@@ -42,13 +42,54 @@ abstract final class SelfieMirroring {
 
   static bool _platformMirrorsFrontCapture = true;
 
+  /// Whether the orientation of the photo that will actually be **stored**.
+  ///
+  /// True means the saved bytes read left-to-right as a mirror image.
+  ///
+  /// This is what the viewfinder must show, so that what the user framed is
+  /// what they get. It is derived through the same two-step pipeline the
+  /// capture path uses - the platform's own mirroring, then the app's - rather
+  /// than being asserted directly, so the preview cannot drift away from the
+  /// capture if the platform behaviour is ever corrected.
+  static bool storedPhotoIsMirrored({
+    required CameraLensDirection direction,
+    required bool mirrorSelfies,
+    bool? platformMirrors,
+  }) {
+    if (direction != CameraLensDirection.front) return false;
+    final bool platformMirrored =
+        platformMirrors ?? _platformMirrorsFrontCapture;
+    final bool flipped = shouldFlipCapturedPhoto(
+      direction: direction,
+      mirrorSelfies: mirrorSelfies,
+      platformMirrors: platformMirrored,
+    );
+    // Exactly one of "the platform mirrored it" and "we flipped it" may be
+    // true, so the XOR reduces to the user's preference.
+    return platformMirrored ^ flipped;
+  }
+
   /// Whether the *live preview* should be mirrored.
   ///
-  /// Always true for the front camera, like a physical mirror, regardless of
-  /// the preference: the preference controls the saved photo, not the viewfinder.
+  /// The preview mirrors exactly when the stored photo will be mirrored, for
+  /// both lens directions. That is a deliberate change: the viewfinder used to
+  /// be an unconditional mirror for the front camera, so a user who turned
+  /// "Mirror selfies" off saw a mirrored preview and got an unmirrored photo -
+  /// reported as the framing not matching the saved result. Showing the same
+  /// orientation in both places removes that class of surprise.
+  ///
   /// Back cameras are never mirrored.
-  static bool shouldMirrorPreview(CameraLensDirection direction) =>
-      direction == CameraLensDirection.front;
+  static bool shouldMirrorPreview({
+    required CameraLensDirection direction,
+    required bool mirrorSelfies,
+    bool? platformMirrors,
+  }) {
+    return storedPhotoIsMirrored(
+      direction: direction,
+      mirrorSelfies: mirrorSelfies,
+      platformMirrors: platformMirrors,
+    );
+  }
 
   /// Whether a captured [XFile] needs a horizontal flip before it is stored.
   ///

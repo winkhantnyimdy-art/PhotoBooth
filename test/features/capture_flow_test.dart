@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photo_booth/core/theme/app_colors.dart';
 import 'package:photo_booth/core/theme/app_theme.dart';
 import 'package:photo_booth/features/camera/camera_preferences.dart';
+import 'package:photo_booth/features/camera/camera_geometry.dart';
+import 'package:photo_booth/features/home/layout_geometry.dart';
 import 'package:photo_booth/features/camera/camera_screen.dart';
 import 'package:photo_booth/features/camera/preferences_service.dart';
 import 'package:photo_booth/features/camera/session_state.dart';
@@ -443,33 +445,48 @@ void main() {
         expect(viewport.height, greaterThan(surface.height / 3));
         expect(viewport.width, greaterThan(0));
 
-        // The feed must COVER the viewport: at least as large on both axes and
-        // exactly flush on one, so the overflow is cropped rather than
-        // letterboxed.
+        // The feed must COVER the crop window - the region that becomes one
+        // photo cell - and not merely the whole viewport.
         //
-        // This is the regression guard for the iPhone 16e defect where the
-        // viewfinder collapsed into a short 16:9 band with large black areas
-        // above and below.
+        // Fitting the feed to the viewport instead showed the user far more
+        // than the export keeps: on a tall phone the 3:4 window is a fraction
+        // of the height, so a large part of what the user framed against was
+        // cropped away after the fact. That mismatch was reported as the
+        // framing not matching the saved photo.
+        final Rect window = CameraGeometry.cropWindow(
+          viewport: viewport,
+          outputAspect: PhotoStripGeometry.cellAspect(PhotoLayout.pair2),
+        );
         final Size feed = tester.getSize(find.byType(_FakePreview));
+
         expect(
           feed.width,
-          greaterThanOrEqualTo(viewport.width - 0.5),
-          reason: 'the feed must span at least the full viewport width',
+          greaterThanOrEqualTo(window.width - 0.5),
+          reason: 'the feed must span at least the full crop-window width',
         );
         expect(
           feed.height,
-          greaterThanOrEqualTo(viewport.height - 0.5),
+          greaterThanOrEqualTo(window.height - 0.5),
           reason:
-              'the feed must span at least the full viewport height; a '
+              'the feed must span at least the full crop-window height; a '
               'shorter feed is the letterboxed band reported on iOS Safari',
         );
         // Exactly one axis is flush; the other overflows and is cropped.
-        final bool flushWidth = (feed.width - viewport.width).abs() < 0.5;
-        final bool flushHeight = (feed.height - viewport.height).abs() < 0.5;
+        final bool flushWidth = (feed.width - window.width).abs() < 0.5;
+        final bool flushHeight = (feed.height - window.height).abs() < 0.5;
         expect(
           flushWidth || flushHeight,
           isTrue,
           reason: 'a cover fit must be flush on at least one axis',
+        );
+
+        // No stretching: the feed keeps the upright stream aspect.
+        expect(
+          feed.width / feed.height,
+          closeTo(1080 / 1920, 0.02),
+          reason:
+              'the viewfinder must present the upright portrait frame; a 16:9 '
+              'band means the device-orientation heuristic is back',
         );
 
         // The control bar must stay compact, not swallow the screen.
@@ -536,15 +553,33 @@ void main() {
       expect(feed.height, greaterThan(0));
       expect(feed.width / feed.height, isNot(isNaN));
 
-      // Cover-fitted: at least as large as the viewport on both axes, and flush
-      // on exactly one of them.
-      expect(feed.width, greaterThanOrEqualTo(viewport.width - 0.5));
-      expect(feed.height, greaterThanOrEqualTo(viewport.height - 0.5));
+      // Cover-fitted to the CROP WINDOW rather than to the whole viewport.
+      // Fitting the viewport showed the user far more than the export keeps,
+      // so the framing they aimed at was not the framing they got.
+      final Rect window = CameraGeometry.cropWindow(
+        viewport: viewport,
+        outputAspect: PhotoStripGeometry.cellAspect(PhotoLayout.pair2),
+      );
+      expect(feed.width, greaterThanOrEqualTo(window.width - 0.5));
+      expect(feed.height, greaterThanOrEqualTo(window.height - 0.5));
       expect(
-        (feed.width - viewport.width).abs() < 0.5 ||
-            (feed.height - viewport.height).abs() < 0.5,
+        (feed.width - window.width).abs() < 0.5 ||
+            (feed.height - window.height).abs() < 0.5,
         isTrue,
         reason: 'a cover fit must be flush on at least one axis',
+      );
+
+      // The crop window is the shape that is actually kept, and it is centred
+      // in the viewport so framing is predictable.
+      expect(
+        window.width / window.height,
+        closeTo(3 / 4, 0.01),
+        reason: 'the crop window must match one exported 3:4 photo cell',
+      );
+      expect(
+        ((window.left + (window.width / 2)) - (viewport.width / 2)).abs(),
+        lessThan(0.5),
+        reason: 'the crop window must be horizontally centred',
       );
 
       // The feed keeps the UPRIGHT aspect of the stream, not the raw

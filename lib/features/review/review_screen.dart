@@ -6,6 +6,7 @@ import '../../core/art/checkerboard.dart';
 import '../../core/art/frame_decorations.dart';
 import '../../core/art/retro_sticker.dart';
 import '../../core/media/photo_source.dart';
+import '../../core/media/preview_decode.dart';
 import '../../core/theme/app_colors.dart';
 import '../decorate/decoration_model.dart';
 import '../../core/theme/app_motion.dart';
@@ -526,7 +527,14 @@ class _SelectableCell extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(7),
-            child: PhotoImage(photo: photo),
+            child: PhotoImage(
+              photo: photo,
+              // Decode at the painted size, not the stored 12 MP.
+              decodeWidth: PreviewDecode.forWidth(
+                width,
+                MediaQuery.devicePixelRatioOf(context),
+              ),
+            ),
           ),
         ),
       ),
@@ -584,7 +592,14 @@ class _ThumbnailRow extends StatelessWidget {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(7),
-                    child: PhotoImage(photo: photos[i]),
+                    child: PhotoImage(
+                      photo: photos[i],
+                      // A 56 px thumbnail must not decode a 12 MP frame.
+                      decodeWidth: PreviewDecode.forSize(
+                        56,
+                        MediaQuery.devicePixelRatioOf(context),
+                      ),
+                    ),
                   ),
                 ),
               ),

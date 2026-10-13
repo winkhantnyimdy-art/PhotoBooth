@@ -119,6 +119,7 @@ class PhotoImage extends StatefulWidget {
     this.height,
     this.alignment = Alignment.center,
     this.filterQuality = FilterQuality.medium,
+    this.decodeWidth,
   });
 
   final XFile photo;
@@ -127,6 +128,14 @@ class PhotoImage extends StatefulWidget {
   final double? height;
   final AlignmentGeometry alignment;
   final FilterQuality filterQuality;
+
+  /// Maximum width in pixels to decode this photo at, or null for full size.
+  ///
+  /// Pass a value from `PreviewDecode.forWidth` for interactive previews. The
+  /// exporter does not use this widget at all - it reads the original bytes and
+  /// decodes them at export resolution - so downscaling here cannot affect the
+  /// quality of a saved PNG.
+  final int? decodeWidth;
 
   @override
   State<PhotoImage> createState() => _PhotoImageState();
@@ -176,8 +185,18 @@ class _PhotoImageState extends State<PhotoImage> {
         child: const _PhotoPlaceholder(),
       );
     }
-    return Image.memory(
-      bytes,
+    return Image(
+      // ResizeImage keys its cache entry on the target size, so the small
+      // preview never forces the full-resolution decode to exist at all.
+      // Without it every preview surface held a full-size bitmap: about 48 MB
+      // per 12 MP capture, and a four-shot strip meant four of them at once.
+      image: widget.decodeWidth == null
+          ? MemoryImage(bytes)
+          : ResizeImage.resizeIfNeeded(
+              widget.decodeWidth,
+              null,
+              MemoryImage(bytes),
+            ),
       fit: widget.fit,
       width: widget.width,
       height: widget.height,

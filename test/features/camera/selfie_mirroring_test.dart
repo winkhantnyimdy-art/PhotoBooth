@@ -210,9 +210,91 @@ void main() {
   });
 
   group('SelfieMirroring.shouldMirrorPreview', () {
-    test('the front preview is a mirror regardless of the preference', () {
-      expect(SelfieMirroring.shouldMirrorPreview(_front.lensDirection), isTrue);
-      expect(SelfieMirroring.shouldMirrorPreview(_back.lensDirection), isFalse);
+    test('the preview mirrors exactly when the stored photo will be mirrored',
+        () {
+      // The viewfinder used to be an unconditional mirror for the front
+      // camera, so turning "Mirror selfies" off produced a mirrored preview
+      // and an unmirrored photo. Preview and capture must now agree.
+      for (final CameraLensDirection direction in <CameraLensDirection>[
+        CameraLensDirection.front,
+        CameraLensDirection.back,
+      ]) {
+        for (final bool mirrorSelfies in <bool>[true, false]) {
+          for (final bool platform in <bool>[true, false]) {
+            expect(
+              SelfieMirroring.shouldMirrorPreview(
+                direction: direction,
+                mirrorSelfies: mirrorSelfies,
+                platformMirrors: platform,
+              ),
+              SelfieMirroring.storedPhotoIsMirrored(
+                direction: direction,
+                mirrorSelfies: mirrorSelfies,
+                platformMirrors: platform,
+              ),
+              reason:
+                  'direction=$direction mirrorSelfies=$mirrorSelfies '
+                  'platformMirrors=$platform: the preview must show the same '
+                  'orientation the user will get',
+            );
+          }
+        }
+      }
+    });
+
+    test('the back preview is never mirrored', () {
+      for (final bool mirrorSelfies in <bool>[true, false]) {
+        expect(
+          SelfieMirroring.shouldMirrorPreview(
+            direction: CameraLensDirection.back,
+            mirrorSelfies: mirrorSelfies,
+            platformMirrors: true,
+          ),
+          isFalse,
+        );
+      }
+    });
+
+    test('the front preview follows the preference', () {
+      expect(
+        SelfieMirroring.shouldMirrorPreview(
+          direction: CameraLensDirection.front,
+          mirrorSelfies: true,
+          platformMirrors: true,
+        ),
+        isTrue,
+      );
+      expect(
+        SelfieMirroring.shouldMirrorPreview(
+          direction: CameraLensDirection.front,
+          mirrorSelfies: false,
+          platformMirrors: true,
+        ),
+        isFalse,
+        reason: 'OFF must show the natural orientation, not a mirror',
+      );
+    });
+
+    test('stored orientation is independent of platform behaviour', () {
+      // Whatever the platform does, the user's preference decides the result.
+      for (final bool platform in <bool>[true, false]) {
+        expect(
+          SelfieMirroring.storedPhotoIsMirrored(
+            direction: CameraLensDirection.front,
+            mirrorSelfies: true,
+            platformMirrors: platform,
+          ),
+          isTrue,
+        );
+        expect(
+          SelfieMirroring.storedPhotoIsMirrored(
+            direction: CameraLensDirection.front,
+            mirrorSelfies: false,
+            platformMirrors: platform,
+          ),
+          isFalse,
+        );
+      }
     });
   });
 
