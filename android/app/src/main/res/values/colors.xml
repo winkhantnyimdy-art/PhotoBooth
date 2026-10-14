@@ -2,4 +2,7 @@
 <resources>
     <!-- Warm cream app background, mirrors AppColors.background in Dart. -->
     <color name="splash_background">#FFFFF8F1</color>
+    <!-- Launcher icon backdrop. Matches AppColors.background (0xFFFFF7F0) so
+         the adaptive icon and the legacy raster share one cream. -->
+    <color name="ic_launcher_background">#FFF7F0</color>
 </resources>
