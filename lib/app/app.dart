@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_theme.dart';
@@ -16,6 +17,23 @@ class App extends StatelessWidget {
 
   /// Overrides how the album is created. Used by tests to inject a fake.
   final AlbumServiceFactory? albumFactory;
+
+  /// System bars for the Minimal Dark theme.
+  ///
+  /// PhotoBooth is a near-black app, so Android's default status-bar icons
+  /// (dark) were invisible against the `#101012` background. `statusBarIconBrightness: Brightness.light`
+  /// forces white icons, and the navigation bar is made transparent so the
+  /// gesture pill and the three-button bar read against the app's own dark
+  /// surface rather than a light scrim.
+  static const SystemUiOverlayStyle darkSystemBars = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    statusBarBrightness: Brightness.dark,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarIconBrightness: Brightness.light,
+    systemNavigationBarContrastEnforced: false,
+    systemNavigationBarDividerColor: Colors.transparent,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -36,11 +54,17 @@ class App extends StatelessWidget {
   /// would only be visible to the first route and every pushed screen would
   /// fail to resolve it.
   static Widget _buildApp(Widget home) {
-    return MaterialApp(
-      title: AppTheme.brand,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.theme,
-      home: home,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: darkSystemBars,
+      // The Navigator paints every route inside this one AnnotatedRegion, so
+      // pushed screens (Camera, Review, Decorate, Export) keep white system
+      // icons for free instead of each declaring its own overlay style.
+      child: MaterialApp(
+        title: AppTheme.brand,
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.theme,
+        home: home,
+      ),
     );
   }
 }
@@ -99,7 +123,7 @@ class _AlbumSplash extends StatelessWidget {
           height: 32,
           child: CircularProgressIndicator(
             strokeWidth: 3,
-            color: AppColors.hotPink,
+            color: AppColors.onDark,
           ),
         ),
       ),

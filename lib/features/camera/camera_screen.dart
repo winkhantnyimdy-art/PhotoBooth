@@ -48,7 +48,7 @@ class CameraScreen extends StatefulWidget {
   final ControllerFactory? controllerFactory;
   final Timing? timing;
   final void Function(CameraSessionState state, {int? countdown, int? shot})?
-      onStateChange;
+  onStateChange;
 
   /// Sound played on capture.
   ///
@@ -268,7 +268,11 @@ class _CameraScreenState extends State<CameraScreen>
     _controller = widget.controllerFactory != null
         ? widget.controllerFactory!(newCamera, ResolutionPreset.high)
         // Photo-only: see _initCamera for why audio stays off.
-        : CameraController(newCamera, ResolutionPreset.high, enableAudio: false);
+        : CameraController(
+            newCamera,
+            ResolutionPreset.high,
+            enableAudio: false,
+          );
 
     try {
       await _controller!.initialize();
@@ -354,9 +358,11 @@ class _CameraScreenState extends State<CameraScreen>
 
     if (widget.isRetake) {
       final NavigatorState navigator = Navigator.of(context);
-      navigator.pop<XFile>(result.success && result.photos.isNotEmpty
-          ? await _applySelfieMirroring(result.photos.first)
-          : null);
+      navigator.pop<XFile>(
+        result.success && result.photos.isNotEmpty
+            ? await _applySelfieMirroring(result.photos.first)
+            : null,
+      );
       return;
     }
 
@@ -477,16 +483,18 @@ class _CameraScreenState extends State<CameraScreen>
               Expanded(
                 child: _loading
                     ? const Center(
-                        child: CircularProgressIndicator(color: AppColors.onDark),
+                        child: CircularProgressIndicator(
+                          color: AppColors.onDark,
+                        ),
                       )
                     : _error != null
-                        ? _buildError()
-                        : Column(
-                            children: <Widget>[
-                              Expanded(child: _buildCameraPreview()),
-                              _buildControls(),
-                            ],
-                          ),
+                    ? _buildError()
+                    : Column(
+                        children: <Widget>[
+                          Expanded(child: _buildCameraPreview()),
+                          _buildControls(),
+                        ],
+                      ),
               ),
             ],
           ),
@@ -503,11 +511,15 @@ class _CameraScreenState extends State<CameraScreen>
           _CircleButton(
             icon: Icons.close_rounded,
             onPressed: () => Navigator.of(context).maybePop(),
+            tooltip: 'Back',
           ),
           Expanded(
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.xs),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: S.md,
+                  vertical: S.xs,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.darkElevated,
                   borderRadius: R.pillRadius,
@@ -542,6 +554,7 @@ class _CameraScreenState extends State<CameraScreen>
           _CircleButton(
             icon: Icons.flash_on_rounded,
             onPressed: null,
+            tooltip: 'Flash',
           ),
         ],
       ),
@@ -581,61 +594,61 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Widget _buildError() => Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(S.lg),
-          child: Container(
-            padding: const EdgeInsets.all(S.lg),
-            decoration: BoxDecoration(
-              color: AppColors.darkElevated,
-              borderRadius: R.all(R.lg),
-              border: Border.all(color: AppColors.darkLine),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Container(
-                  width: 62,
-                  height: 62,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.darkElevated,
-                    borderRadius: R.all(R.xl),
-                  ),
-                  child: const Icon(
-                    Icons.no_photography_rounded,
-                    size: 30,
-                    color: AppColors.darkMuted,
-                  ),
-                ),
-                const SizedBox(height: S.md),
-                Text(
-                  _error!.title,
-                  textAlign: TextAlign.center,
-                  style: AppText.heading.copyWith(color: AppColors.onDark),
-                ),
-                const SizedBox(height: S.xs),
-                Text(
-                  _error!.detail,
-                  textAlign: TextAlign.center,
-                  style: AppText.caption.copyWith(color: AppColors.darkMuted),
-                ),
-                const SizedBox(height: S.lg),
-                OutlinedButton.icon(
-                  onPressed: _retry,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Try again'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    foregroundColor: AppColors.onDark,
-                    side: const BorderSide(color: AppColors.darkLine),
-                    shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
-                  ),
-                ),
-              ],
-            ),
-          ),
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(S.lg),
+      child: Container(
+        padding: const EdgeInsets.all(S.lg),
+        decoration: BoxDecoration(
+          color: AppColors.darkElevated,
+          borderRadius: R.all(R.lg),
+          border: Border.all(color: AppColors.darkLine),
         ),
-      );
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 62,
+              height: 62,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.darkElevated,
+                borderRadius: R.all(R.xl),
+              ),
+              child: const Icon(
+                Icons.no_photography_rounded,
+                size: 30,
+                color: AppColors.darkMuted,
+              ),
+            ),
+            const SizedBox(height: S.md),
+            Text(
+              _error!.title,
+              textAlign: TextAlign.center,
+              style: AppText.heading.copyWith(color: AppColors.onDark),
+            ),
+            const SizedBox(height: S.xs),
+            Text(
+              _error!.detail,
+              textAlign: TextAlign.center,
+              style: AppText.caption.copyWith(color: AppColors.darkMuted),
+            ),
+            const SizedBox(height: S.lg),
+            OutlinedButton.icon(
+              onPressed: _retry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try again'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                foregroundColor: AppColors.onDark,
+                side: const BorderSide(color: AppColors.darkLine),
+                shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 
   Widget _buildCameraPreview() {
     final CameraController? controller = _controller;
@@ -691,9 +704,7 @@ class _CameraScreenState extends State<CameraScreen>
                   child: Center(
                     child: _ProgressIndicator(
                       captured: _sessionCount,
-                      total: widget.isRetake
-                          ? 1
-                          : widget.layout.photoCount,
+                      total: widget.isRetake ? 1 : widget.layout.photoCount,
                     ),
                   ),
                 ),
@@ -705,131 +716,138 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Widget _buildControls() => Container(
-        padding: const EdgeInsets.fromLTRB(S.md, S.md, S.md, S.md),
-        decoration: const BoxDecoration(
-          color: AppColors.darkSurface,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    padding: const EdgeInsets.fromLTRB(S.md, S.md, S.md, S.md),
+    decoration: const BoxDecoration(color: AppColors.darkSurface),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                // In retake mode there is a single shot, so the numbered strip
-                // would be misleading; show the slot being replaced instead.
-                if (widget.isRetake)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
-                        color: AppColors.darkElevated,
-                        border: Border.all(
-                          color: AppColors.onDark,
-                          width: 2,
-                        ),
-                      ),
-                      child: Text(
-                        'Replacing shot ${widget.retakeIndex! + 1}',
-                        style: AppText.buttonSmall.copyWith(
-                          color: AppColors.onDark,
-                        ),
-                      ),
+            // In retake mode there is a single shot, so the numbered strip
+            // would be misleading; show the slot being replaced instead.
+            if (widget.isRetake)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    color: AppColors.darkElevated,
+                    border: Border.all(color: AppColors.onDark, width: 2),
+                  ),
+                  child: Text(
+                    'Replacing shot ${widget.retakeIndex! + 1}',
+                    style: AppText.buttonSmall.copyWith(
+                      color: AppColors.onDark,
                     ),
-                  )
-                else
-                  for (int i = 0; i < widget.layout.photoCount; i++)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                  ),
+                ),
+              )
+            else
+              for (int i = 0; i < widget.layout.photoCount; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: i < _sessionCount
+                          ? AppColors.popYellow
+                          : AppColors.darkElevated,
+                      border: Border.all(
                         color: i < _sessionCount
-                            ? AppColors.popYellow
-                            : AppColors.darkElevated,
-                        border: Border.all(
-                          color: i < _sessionCount
-                              ? AppColors.accentDeep
-                              : AppColors.darkLine,
-                          width: 2,
-                        ),
+                            ? AppColors.accentDeep
+                            : AppColors.darkLine,
+                        width: 2,
                       ),
-                      child: Text(
-                        '${i + 1}',
-                        style: AppText.caption.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: i < _sessionCount
-                              ? AppColors.popInk
-                              : AppColors.darkMuted,
-                        ),
+                    ),
+                    child: Text(
+                      '${i + 1}',
+                      style: AppText.caption.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: i < _sessionCount
+                            ? AppColors.popInk
+                            : AppColors.darkMuted,
                       ),
                     ),
                   ),
-              ],
+                ),
+          ],
+        ),
+        const SizedBox(height: S.md),
+        Row(
+          children: <Widget>[
+            if (_capturedPhotos.isNotEmpty)
+              ClipRRect(
+                borderRadius: R.all(R.sm),
+                child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: PhotoImage(photo: _capturedPhotos.last),
+                ),
+              )
+            else
+              const SizedBox(width: 44, height: 44),
+            Expanded(
+              child: Center(
+                child: _ShutterButton(
+                  enabled: _sessionState.isReady,
+                  busy: _sessionState.isActive,
+                  onPressed: _startSession,
+                ),
+              ),
             ),
-            const SizedBox(height: S.md),
-            Row(
-              children: <Widget>[
-                if (_capturedPhotos.isNotEmpty)
-                  ClipRRect(
-                    borderRadius: R.all(R.sm),
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: PhotoImage(photo: _capturedPhotos.last),
-                    ),
-                  )
-                else
-                  const SizedBox(width: 44, height: 44),
-                Expanded(
-                  child: Center(
-                    child: _ShutterButton(
-                      enabled: _sessionState.isReady,
-                      busy: _sessionState.isActive,
-                      onPressed: _startSession,
-                    ),
-                  ),
-                ),
-                _CircleControl(
-                  icon: Icons.cameraswitch_rounded,
-                  tooltip: 'Switch camera',
-                  onPressed: _isSwitchingAllowed ? _switchCamera : null,
-                ),
-              ],
+            _CircleControl(
+              icon: Icons.cameraswitch_rounded,
+              tooltip: 'Switch camera',
+              onPressed: _isSwitchingAllowed ? _switchCamera : null,
             ),
           ],
         ),
-      );
+      ],
+    ),
+  );
 }
 
 class _CircleButton extends StatelessWidget {
-  const _CircleButton({required this.icon, this.onPressed});
+  const _CircleButton({required this.icon, this.onPressed, this.tooltip = ''});
 
   final IconData icon;
   final VoidCallback? onPressed;
 
+  /// Accessibility label. Without one, TalkBack announces an unlabelled
+  /// button and automated UI drivers cannot identify it.
+  final String tooltip;
+
   @override
   Widget build(BuildContext context) {
     final bool enabled = onPressed != null;
-    return Material(
-      color: enabled ? AppColors.darkElevated : AppColors.darkSurface,
-      shape: CircleBorder(side: BorderSide(color: AppColors.darkLine)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(
-            icon,
-            size: 22,
-            color: enabled ? AppColors.onDark : AppColors.darkMuted,
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: tooltip,
+        child: Material(
+          color: enabled ? AppColors.darkElevated : AppColors.darkSurface,
+          shape: CircleBorder(side: BorderSide(color: AppColors.darkLine)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onPressed,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Icon(
+                icon,
+                size: 22,
+                color: enabled ? AppColors.onDark : AppColors.darkMuted,
+              ),
+            ),
           ),
         ),
       ),
@@ -860,18 +878,32 @@ class _CircleControl extends StatelessWidget {
         child: SizedBox(
           width: S.touchTarget,
           height: S.touchTarget,
+          // Previously this painted `AppColors.surface` - the cream Retro Pop
+          // paper colour - behind a white icon, so the glyph was white-on-cream
+          // and effectively invisible. The enabled state now uses the Minimal
+          // Dark elevated surface with a white icon, and the disabled state
+          // drops the fill and dims both ring and glyph so it reads as
+          // unavailable rather than broken.
           child: Material(
-            color: enabled ? AppColors.surface : Colors.transparent,
-              shape: const CircleBorder(side: BorderSide(color: AppColors.darkLine)),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: onPressed,
-                child: Icon(
-                  icon,
-                  size: 21,
-                  color: enabled ? AppColors.onDark : AppColors.darkMuted,
-                ),
+            color: enabled ? AppColors.darkElevated : Colors.transparent,
+            shape: CircleBorder(
+              side: BorderSide(
+                color: enabled
+                    ? AppColors.darkLine
+                    : AppColors.darkLine.withValues(alpha: 0.5),
               ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onPressed,
+              child: Icon(
+                icon,
+                size: 21,
+                color: enabled
+                    ? AppColors.onDark
+                    : AppColors.darkMuted.withValues(alpha: 0.5),
+              ),
+            ),
           ),
         ),
       ),

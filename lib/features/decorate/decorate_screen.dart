@@ -95,19 +95,45 @@ class _DecorateScreenState extends State<DecorateScreen> {
   final TextEditingController _textController = TextEditingController();
   Color _textColor = Colors.white;
 
+  /// Pinch-to-zoom for the photostrip.
+  ///
+  /// A 4 CUT strip is a tall 1x4 column, so at fit size it renders as a narrow
+  /// ribbon. The controller lets the user inspect a frame closely while the
+  /// default scale of 1 still shows the whole strip.
+  final TransformationController _zoom = TransformationController();
+  double _zoomScale = 1;
+
   @override
   void initState() {
     super.initState();
     _layout = widget.layout;
     // A reopened album session keeps its own layout choice, which may differ
     // from the layout the photos were originally captured into.
-    _state = widget.initialDecorationState ??
+    _state =
+        widget.initialDecorationState ??
         DecorationState(
           layout: _layout,
           background: BackgroundChoice.cream,
           style: DecorativeStyle.clean,
         );
     _layout = _state.layout;
+    _zoom.addListener(_onZoomChanged);
+  }
+
+  /// Panning is only enabled once the strip is actually zoomed in, so a
+  /// one-finger drag on a sticker at the default zoom is never stolen by the
+  /// viewport.
+  void _onZoomChanged() {
+    final double next = _zoom.value.getMaxScaleOnAxis();
+    const double threshold = 1.01;
+    final bool crossed = (_zoomScale > threshold) != (next > threshold);
+    if (!crossed && (next - _zoomScale).abs() < 0.001) return;
+    if (!mounted) return;
+    setState(() => _zoomScale = next);
+  }
+
+  void _resetZoom() {
+    _zoom.value = Matrix4.identity();
   }
 
   /// Switches the composition to [next], keeping every photo and edit.
@@ -127,6 +153,8 @@ class _DecorateScreenState extends State<DecorateScreen> {
 
   @override
   void dispose() {
+    _zoom.removeListener(_onZoomChanged);
+    _zoom.dispose();
     _textController.dispose();
     super.dispose();
   }
@@ -138,19 +166,25 @@ class _DecorateScreenState extends State<DecorateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.darkSurface,
+      backgroundColor: AppColors.darkBackground,
       body: SafeArea(
         child: Column(
           children: <Widget>[
             _buildTopBar(),
+            // The photostrip is the point of this screen, so the preview
+            // claims every pixel the bounded toolbar does not need. It used to
+            // split the page 5:6, which squeezed a tall 4 CUT ribbon down to a
+            // few dozen logical pixels.
             Expanded(
-              flex: 5,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: S.md),
+                padding: const EdgeInsets.fromLTRB(S.md, S.xs, S.md, S.sm),
                 child: _buildCompositionPreview(),
               ),
             ),
-            Expanded(flex: 6, child: _buildTray()),
+            // Only shown while zoomed, and it sits *below* the strip rather
+            // than over it, so no control ever covers the composition.
+            if (_zoomScale > 1.01) _buildFitBar(),
+            _buildTray(),
           ],
         ),
       ),
@@ -159,50 +193,46 @@ class _DecorateScreenState extends State<DecorateScreen> {
 
   Widget _buildTopBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(S.md, S.sm, S.md, S.xs),
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(S.sm, S.sm, S.sm, S.xs),
+      child: Row(
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              _DarkCircleButton(
-                icon: Icons.arrow_back_rounded,
-                onPressed: () => Navigator.of(context).maybePop(),
-              ),
-              _DarkCircleButton(
-                icon: Icons.undo_rounded,
-                onPressed: _undoRedo.canUndo ? _undo : null,
-              ),
-              _DarkCircleButton(
-                icon: Icons.redo_rounded,
-                onPressed: _undoRedo.canRedo ? _redo : null,
-              ),
-              Expanded(
-                child: Center(
-                  child: Text(
-                    widget.albumSessionId == null
-                        ? 'Decorate'
-                        : 'Edit Session',
-                    style: AppText.title.copyWith(color: AppColors.onDark),
-                  ),
-                ),
-              ),
-          TextButton.icon(
-                onPressed: _resetDecoration,
-                icon: const Icon(Icons.refresh_rounded, size: 16),
-                label: const Text('Reset'),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.onDark,
-                  textStyle: AppText.buttonSmall,
-                ),
-              ),
-            ],
+          _DarkCircleButton(
+            icon: Icons.arrow_back_rounded,
+            onPressed: () => Navigator.of(context).maybePop(),
           ),
-          // Layout can be changed without losing any captured photo: only
-          // options with a cell for every photo are offered.
-          _LayoutSwitcher(
-            current: _layout,
-            photoCount: widget.photos.length,
-            onSelect: _switchLayout,
+          const SizedBox(width: S.xs),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  widget.albumSessionId == null ? 'Decorate' : 'Edit Session',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.heading.copyWith(color: AppColors.onDark),
+                ),
+                // Layout can be changed without losing any captured photo:
+                // only options with a cell for every photo are offered.
+                _LayoutSwitcher(
+                  current: _layout,
+                  photoCount: widget.photos.length,
+                  onSelect: _switchLayout,
+                ),
+              ],
+            ),
+          ),
+          _DarkCircleButton(
+            icon: Icons.undo_rounded,
+            onPressed: _undoRedo.canUndo ? _undo : null,
+          ),
+          _DarkCircleButton(
+            icon: Icons.redo_rounded,
+            onPressed: _undoRedo.canRedo ? _redo : null,
+          ),
+          _DarkCircleButton(
+            icon: Icons.refresh_rounded,
+            onPressed: _resetDecoration,
           ),
         ],
       ),
@@ -211,83 +241,134 @@ class _DecorateScreenState extends State<DecorateScreen> {
 
   Widget _buildCompositionPreview() {
     final double stripAspect = PhotoStripGeometry.aspectRatio(_layout);
-    return Center(
-      child: AspectRatio(
-        aspectRatio: stripAspect,
-        child: _Composition(
-          layout: _layout,
-          photos: widget.photos,
-          state: _state,
-          selectedSticker: _selectedSticker,
-          selectedText: _selectedText,
-          onStickerTap: (int i) => setState(() {
-            _selectedSticker = _selectedSticker == i ? null : i;
-            _selectedText = null;
-          }),
-          onStickerDrag: _moveSticker,
-          onTextTap: (int i) => setState(() {
-            _selectedText = _selectedText == i ? null : i;
-            _selectedSticker = null;
-            if (_selectedText != null) {
-              _textController.text = _state.texts[i].text;
-              _textColor = _state.texts[i].color;
-            }
-          }),
-          onTextDrag: _moveText,
+    // The composition is sized purely from the viewport: AspectRatio fits the
+    // exported strip inside whatever space is left after the header and the
+    // bounded toolbar, so a tall 4 CUT ribbon grows as the toolbar collapses
+    // instead of being hard-coded to one emulator's height.
+    //
+    // No wrapping Stack here: the composition's own Stack is the first Stack
+    // inside DecorateScreen, and its paint order is a tested contract.
+    return InteractiveViewer(
+      transformationController: _zoom,
+      // Panning is only armed once zoomed in, so at the default fit a
+      // one-finger drag always belongs to the stickers underneath.
+      panEnabled: _zoomScale > 1.01,
+      scaleEnabled: true,
+      minScale: 1.0,
+      maxScale: 6.0,
+      boundaryMargin: const EdgeInsets.all(160),
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: stripAspect,
+          child: _Composition(
+            layout: _layout,
+            photos: widget.photos,
+            state: _state,
+            selectedSticker: _selectedSticker,
+            selectedText: _selectedText,
+            onStickerTap: (int i) => setState(() {
+              _selectedSticker = _selectedSticker == i ? null : i;
+              _selectedText = null;
+            }),
+            onStickerDrag: _moveSticker,
+            onTextTap: (int i) => setState(() {
+              _selectedText = _selectedText == i ? null : i;
+              _selectedSticker = null;
+              if (_selectedText != null) {
+                _textController.text = _state.texts[i].text;
+                _textColor = _state.texts[i].color;
+              }
+            }),
+            onTextDrag: _moveText,
+          ),
         ),
       ),
     );
   }
 
+  /// Slim bar that returns the preview to fit scale. Only present while the
+  /// strip is zoomed in.
+  Widget _buildFitBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(S.md, 0, S.md, S.sm),
+      child: Row(
+        children: <Widget>[
+          const Icon(
+            Icons.zoom_in_rounded,
+            size: 16,
+            color: AppColors.darkMuted,
+          ),
+          const SizedBox(width: S.xs),
+          Expanded(
+            child: Text(
+              'Preview zoomed ${_zoomScale.toStringAsFixed(1)}x',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption.copyWith(color: AppColors.darkMuted),
+            ),
+          ),
+          Semantics(
+            button: true,
+            label: 'Reset preview zoom',
+            child: TextButton.icon(
+              onPressed: _resetZoom,
+              icon: const Icon(Icons.fit_screen_rounded, size: 16),
+              label: const Text('Fit'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.onDark,
+                backgroundColor: AppColors.darkElevated,
+                textStyle: AppText.caption,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The editing tray.
+  ///
+  /// Its height is a bounded share of the viewport rather than a flex split, so
+  /// the photostrip above always wins the remaining space and the controls can
+  /// never grow into an oversized panel.
   Widget _buildTray() {
+    final double screen = MediaQuery.sizeOf(context).height;
+    // The tray is the only thing competing with the strip for height, so it is
+    // kept to a third of the viewport. Every tool panel scrolls internally, so
+    // a shorter tray costs reachability nothing while the photostrip - the
+    // reason the screen exists - grows by roughly a third.
+    final double trayHeight = (screen * 0.32).clamp(212.0, 300.0).toDouble();
+
     return Container(
       decoration: const BoxDecoration(
-        color: AppColors.darkElevated,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(R.lg)),
+        border: Border(top: BorderSide(color: AppColors.darkLine)),
       ),
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          // On very short screens the tab bar + done button can exceed the
-          // available height. In that case, make the whole tray scrollable
-          // so every control stays reachable.
-          final double minTabBarHeight = 48;
-          final double minDoneButtonHeight = 68;
-          final double minContentHeight = 80;
-          final double totalMin = minTabBarHeight + minContentHeight + minDoneButtonHeight;
-
-          if (constraints.maxHeight < totalMin) {
-            return SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  _buildTabBar(),
-                  _buildTabContent(),
-                  _buildDoneButton(context),
-                ],
+      child: SizedBox(
+        height: trayHeight,
+        child: Column(
+          children: <Widget>[
+            _buildTabBar(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(S.md, S.xs, S.md, S.sm),
+                child: _buildTabContent(),
               ),
-            );
-          }
-
-          return Column(
-            children: <Widget>[
-              _buildTabBar(),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(S.md, S.sm, S.md, S.sm),
-                  child: _buildTabContent(),
-                ),
-              ),
-              _buildDoneButton(context),
-            ],
-          );
-        },
+            ),
+            _buildDoneButton(context),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildTabBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(S.sm, S.md, S.sm, S.xs),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(S.sm, S.sm, S.sm, 0),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.darkLine)),
+      ),
       child: Row(
         children: <Widget>[
           for (int i = 0; i < _tabLabels.length; i++)
@@ -298,36 +379,48 @@ class _DecorateScreenState extends State<DecorateScreen> {
                 label: _tabLabels[i],
                 child: GestureDetector(
                   onTap: () => setState(() => _tab = i),
-                  child: AnimatedContainer(
-                    duration: AppMotion.of(context, AppMotion.fast),
-                    padding: const EdgeInsets.symmetric(vertical: S.sm - 2),
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    // A 2 dp underline marks the active tool. The Retro Pop
+                    // version used a solid pink pill here, which fought the
+                    // Minimal Dark palette.
+                    padding: const EdgeInsets.symmetric(vertical: S.sm),
+                    // 44 dp minimum so every tool is a real thumb target
+                    // rather than a ~35 dp strip of text.
+                    constraints: const BoxConstraints(minHeight: 44),
                     decoration: BoxDecoration(
-                      color: _tab == i
-                          ? AppColors.hotPink
-                          : Colors.transparent,
-                      borderRadius: R.pillRadius,
+                      border: Border(
+                        bottom: BorderSide(
+                          color: _tab == i
+                              ? AppColors.onDark
+                              : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: <Widget>[
                         Icon(
                           _tabIcons[i],
-                          size: 18,
+                          size: 17,
                           color: _tab == i
-                              ? AppColors.onAccent
+                              ? AppColors.onDark
                               : AppColors.darkMuted,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _tabLabels[i],
-                          maxLines: 1,
-                          overflow: TextOverflow.clip,
-                          style: AppText.caption.copyWith(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            color: _tab == i
-                                ? AppColors.onAccent
-                                : AppColors.darkMuted,
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            _tabLabels[i],
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.caption.copyWith(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: _tab == i
+                                  ? AppColors.onDark
+                                  : AppColors.darkMuted,
+                            ),
                           ),
                         ),
                       ],
@@ -410,8 +503,10 @@ class _DecorateScreenState extends State<DecorateScreen> {
         if (_state.filter == PhotoFilterType.original)
           const _Hint('Pick a filter above, then fine-tune its strength.')
         else
-          _Hint('${_state.filter.label} at '
-              '${(_state.filterIntensity * 100).round()}% strength.'),
+          _Hint(
+            '${_state.filter.label} at '
+            '${(_state.filterIntensity * 100).round()}% strength.',
+          ),
       ],
     );
   }
@@ -514,7 +609,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
             ),
             Switch(
               value: _state.showDate,
-              activeThumbColor: AppColors.hotPink,
+              activeThumbColor: AppColors.onDark,
               onChanged: (bool value) => setState(() {
                 _state = _state.copyWith(showDate: value);
               }),
@@ -562,7 +657,9 @@ class _DecorateScreenState extends State<DecorateScreen> {
             ),
           ),
         if (_state.stickers.isEmpty)
-          const _Hint('Tap a sticker, then Add. Drag it on the preview to place it.')
+          const _Hint(
+            'Tap a sticker, then Add. Drag it on the preview to place it.',
+          )
         else ...<Widget>[
           const SizedBox(height: S.xs),
           Row(
@@ -590,8 +687,10 @@ class _DecorateScreenState extends State<DecorateScreen> {
               onRotate: (double a) => _rotateSticker(_selectedSticker!, a),
               onDuplicate: () => _duplicateSticker(_selectedSticker!),
               onDelete: () => _removeSticker(_selectedSticker!),
-              onMoveUp: () => _reorderSticker(_selectedSticker!, _selectedSticker! - 1),
-              onMoveDown: () => _reorderSticker(_selectedSticker!, _selectedSticker! + 2),
+              onMoveUp: () =>
+                  _reorderSticker(_selectedSticker!, _selectedSticker! - 1),
+              onMoveDown: () =>
+                  _reorderSticker(_selectedSticker!, _selectedSticker! + 2),
             ),
           ],
           Text(
@@ -630,7 +729,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: R.all(R.sm),
-              borderSide: const BorderSide(color: AppColors.hotPink, width: 2),
+              borderSide: const BorderSide(color: AppColors.onDark, width: 2),
             ),
           ),
         ),
@@ -770,16 +869,18 @@ class _DecorateScreenState extends State<DecorateScreen> {
 
   Widget _buildDoneButton(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(S.md, S.sm, S.md, S.md),
+      padding: const EdgeInsets.fromLTRB(S.md, S.xs, S.md, S.sm),
       child: PressableScale(
         child: FilledButton.icon(
           onPressed: () => _goToExport(context),
           icon: const Icon(Icons.arrow_forward_rounded, size: 20),
           label: const Text('Finish & Save'),
           style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(52),
-            backgroundColor: AppColors.hotPink,
+            minimumSize: const Size.fromHeight(50),
+            backgroundColor: AppColors.onDark,
+            foregroundColor: AppColors.darkBackground,
             shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
+            textStyle: AppText.buttonSmall,
           ),
         ),
       ),
@@ -846,8 +947,9 @@ class _DecorateScreenState extends State<DecorateScreen> {
     if (index < 0 || index >= _state.stickers.length) return;
     _undoRedo.record(_state);
     setState(() {
-      final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers)
-        ..removeAt(index);
+      final List<StickerPlacement> list = List<StickerPlacement>.from(
+        _state.stickers,
+      )..removeAt(index);
       _state = _state.copyWith(stickers: list);
       if (_selectedSticker == index) _selectedSticker = null;
     });
@@ -861,7 +963,9 @@ class _DecorateScreenState extends State<DecorateScreen> {
   void _moveSticker(int index, Offset delta, Size area) {
     if (index < 0 || index >= _state.stickers.length) return;
     final StickerPlacement s = _state.stickers[index];
-    final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers);
+    final List<StickerPlacement> list = List<StickerPlacement>.from(
+      _state.stickers,
+    );
     list[index] = s.copyWith(
       x: (s.x + delta.dx / area.width).clamp(0.0, 1.0),
       y: (s.y + delta.dy / area.height).clamp(0.0, 1.0),
@@ -875,7 +979,9 @@ class _DecorateScreenState extends State<DecorateScreen> {
     if (index < 0 || index >= _state.stickers.length) return;
     _undoRedo.record(_state);
     setState(() {
-      final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers);
+      final List<StickerPlacement> list = List<StickerPlacement>.from(
+        _state.stickers,
+      );
       final StickerPlacement s = list[index];
       list[index] = s.copyWith(scale: (s.scale * factor).clamp(0.3, 3.0));
       _state = _state.copyWith(stickers: list);
@@ -886,7 +992,9 @@ class _DecorateScreenState extends State<DecorateScreen> {
     if (index < 0 || index >= _state.stickers.length) return;
     _undoRedo.record(_state);
     setState(() {
-      final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers);
+      final List<StickerPlacement> list = List<StickerPlacement>.from(
+        _state.stickers,
+      );
       final StickerPlacement s = list[index];
       list[index] = s.copyWith(rotation: s.rotation + angle);
       _state = _state.copyWith(stickers: list);
@@ -897,7 +1005,9 @@ class _DecorateScreenState extends State<DecorateScreen> {
     if (index < 0 || index >= _state.stickers.length) return;
     _undoRedo.record(_state);
     setState(() {
-      final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers);
+      final List<StickerPlacement> list = List<StickerPlacement>.from(
+        _state.stickers,
+      );
       final StickerPlacement original = list[index];
       // Offset the duplicate slightly so it doesn't perfectly overlap.
       final double dx = original.x < 0.8 ? 0.08 : -0.08;
@@ -919,7 +1029,9 @@ class _DecorateScreenState extends State<DecorateScreen> {
     if (newIndex < 0 || newIndex > _state.stickers.length) return;
     _undoRedo.record(_state);
     setState(() {
-      final List<StickerPlacement> list = List<StickerPlacement>.from(_state.stickers);
+      final List<StickerPlacement> list = List<StickerPlacement>.from(
+        _state.stickers,
+      );
       final StickerPlacement item = list.removeAt(oldIndex);
       final int insertAt = newIndex > oldIndex ? newIndex - 1 : newIndex;
       list.insert(insertAt, item);
@@ -1023,9 +1135,7 @@ class _LayoutSwitcher extends StatelessWidget {
     // offered. A bigger layout would render empty cells and a smaller one
     // would drop a shot, so switching can neither lose a photo nor show a gap.
     final List<PhotoLayout> options = PhotoLayout.values
-        .where(
-          (PhotoLayout l) => l.photoCount == photoCount || l == current,
-        )
+        .where((PhotoLayout l) => l.photoCount == photoCount || l == current)
         .toList(growable: false);
     if (options.length <= 1) return const SizedBox.shrink();
 
@@ -1057,11 +1167,11 @@ class _LayoutSwitcher extends StatelessWidget {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(999),
                         color: option == current
-                            ? AppColors.hotPink
+                            ? AppColors.onDark
                             : AppColors.darkElevated,
                         border: Border.all(
                           color: option == current
-                              ? AppColors.hotPink
+                              ? AppColors.onDark
                               : AppColors.darkLine,
                         ),
                       ),
@@ -1176,9 +1286,7 @@ class _Composition extends StatelessWidget {
                       layout: layout,
                       photos: photos,
                       gutter: gutter,
-                      colorFilter: filtered
-                          ? ColorFilter.matrix(matrix)
-                          : null,
+                      colorFilter: filtered ? ColorFilter.matrix(matrix) : null,
                     ),
                   ),
                 ),
@@ -1218,13 +1326,19 @@ class _Composition extends StatelessWidget {
                   ),
                 for (int i = 0; i < state.texts.length; i++)
                   Positioned(
-                    left: state.texts[i].x * width -
-                        (TextOverlayRenderer.measure(state.texts[i], width)
-                                .width /
+                    left:
+                        state.texts[i].x * width -
+                        (TextOverlayRenderer.measure(
+                              state.texts[i],
+                              width,
+                            ).width /
                             2),
-                    top: state.texts[i].y * height -
-                        (TextOverlayRenderer.measure(state.texts[i], width)
-                                .height /
+                    top:
+                        state.texts[i].y * height -
+                        (TextOverlayRenderer.measure(
+                              state.texts[i],
+                              width,
+                            ).height /
                             2),
                     child: _DraggableText(
                       placement: state.texts[i],
@@ -1426,7 +1540,7 @@ class _DraggableSticker extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: selected ? AppColors.hotPink : Colors.transparent,
+              color: selected ? AppColors.onDark : Colors.transparent,
               width: 1.5,
             ),
           ),
@@ -1474,7 +1588,7 @@ class _DraggableText extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: R.all(R.xs),
             border: Border.all(
-              color: selected ? AppColors.hotPink : Colors.transparent,
+              color: selected ? AppColors.onDark : Colors.transparent,
               width: 1.5,
             ),
           ),
@@ -1680,9 +1794,7 @@ class _FooterPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _FooterPainter old) =>
-      old.state != state ||
-      old.foreground != foreground ||
-      old.scale != scale;
+      old.state != state || old.foreground != foreground || old.scale != scale;
 }
 
 // -----------------------------------------------------------------------------
@@ -1772,10 +1884,10 @@ class _DarkSlider extends StatelessWidget {
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
             trackHeight: 4,
-            activeTrackColor: AppColors.hotPink,
+            activeTrackColor: AppColors.onDark,
             inactiveTrackColor: AppColors.darkLine,
-            thumbColor: AppColors.hotPink,
-            overlayColor: AppColors.hotPink.withValues(alpha: 0.18),
+            thumbColor: AppColors.onDark,
+            overlayColor: AppColors.onDark.withValues(alpha: 0.18),
           ),
           child: Slider(
             value: value.clamp(min, max),
@@ -1804,11 +1916,7 @@ class _FilterThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<double> matrix = buildMatrix(
-      type,
-      1,
-      const PhotoAdjustments(),
-    );
+    final List<double> matrix = buildMatrix(type, 1, const PhotoAdjustments());
     final Widget base = sample != null
         // A 64 px chip was decoding the whole 12 MP frame. Capping the decode
         // here is the single biggest win in the editor: this row alone held as
@@ -1856,7 +1964,7 @@ class _FilterThumb extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: R.all(R.sm),
                 border: Border.all(
-                  color: selected ? AppColors.hotPink : AppColors.darkLine,
+                  color: selected ? AppColors.onDark : AppColors.darkLine,
                   width: selected ? 2.5 : 1,
                 ),
               ),
@@ -1918,10 +2026,10 @@ class _ChoicePill extends StatelessWidget {
           duration: AppMotion.of(context, AppMotion.fast),
           padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.sm),
           decoration: BoxDecoration(
-            color: selected ? AppColors.hotPink : AppColors.darkSurface,
+            color: selected ? AppColors.onDark : AppColors.darkSurface,
             borderRadius: R.pillRadius,
             border: Border.all(
-              color: selected ? AppColors.hotPink : AppColors.darkLine,
+              color: selected ? AppColors.onDark : AppColors.darkLine,
               width: 1.5,
             ),
           ),
@@ -1959,7 +2067,7 @@ class _ColorDot extends StatelessWidget {
           shape: BoxShape.circle,
           color: color,
           border: Border.all(
-            color: selected ? AppColors.hotPink : AppColors.darkLine,
+            color: selected ? AppColors.onDark : AppColors.darkLine,
             width: selected ? 3 : 1.5,
           ),
         ),
@@ -1988,44 +2096,37 @@ class _TextRow extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: S.xs),
         decoration: BoxDecoration(
-        color: AppColors.darkSurface,
-        borderRadius: R.all(R.sm),
-        border: Border.all(
-          color: selected ? AppColors.hotPink : AppColors.darkLine,
-          width: selected ? 2 : 1,
+          color: AppColors.darkSurface,
+          borderRadius: R.all(R.sm),
+          border: Border.all(
+            color: selected ? AppColors.onDark : AppColors.darkLine,
+            width: selected ? 2 : 1,
+          ),
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: S.sm,
-          vertical: S.xs,
-        ),
-        child: Row(
-          children: <Widget>[
-            Icon(
-              Icons.text_fields_rounded,
-              color: placement.color,
-              size: 18,
-            ),
-            const SizedBox(width: S.sm),
-            Expanded(
-              child: Text(
-                placement.text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.label.copyWith(color: AppColors.onDark),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: S.sm, vertical: S.xs),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.text_fields_rounded, color: placement.color, size: 18),
+              const SizedBox(width: S.sm),
+              Expanded(
+                child: Text(
+                  placement.text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.label.copyWith(color: AppColors.onDark),
+                ),
               ),
-            ),
-            IconButton(
-              onPressed: onDelete,
-              icon: const Icon(Icons.close_rounded, size: 18),
-              color: AppColors.darkMuted,
-              tooltip: 'Remove caption',
-              visualDensity: VisualDensity.compact,
-            ),
-          ],
+              IconButton(
+                onPressed: onDelete,
+                icon: const Icon(Icons.close_rounded, size: 18),
+                color: AppColors.darkMuted,
+                tooltip: 'Remove caption',
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -2060,7 +2161,7 @@ class _FrameSwatch extends StatelessWidget {
             color: AppColors.darkSurface,
             borderRadius: R.all(R.md),
             border: Border.all(
-              color: selected ? AppColors.hotPink : AppColors.darkLine,
+              color: selected ? AppColors.onDark : AppColors.darkLine,
               width: selected ? 2.5 : 1,
             ),
           ),
@@ -2107,17 +2208,15 @@ class _StickerChip extends StatelessWidget {
           duration: AppMotion.of(context, AppMotion.fast),
           decoration: BoxDecoration(
             color: selected
-                ? AppColors.hotPink.withValues(alpha: 0.2)
+                ? AppColors.onDark.withValues(alpha: 0.2)
                 : AppColors.darkSurface,
             borderRadius: R.all(R.md),
             border: Border.all(
-              color: selected ? AppColors.hotPink : AppColors.darkLine,
+              color: selected ? AppColors.onDark : AppColors.darkLine,
               width: selected ? 2 : 1,
             ),
           ),
-          child: Center(
-            child: RetroSticker(type: type, size: 28),
-          ),
+          child: Center(child: RetroSticker(type: type, size: 28)),
         ),
       ),
     );
@@ -2229,7 +2328,9 @@ class _StickerControls extends StatelessWidget {
                   icon: Icons.delete_outline_rounded,
                   label: 'Delete',
                   onPressed: onDelete,
-                  color: AppColors.hotPink,
+                  // Destructive actions keep a red signal in Minimal Dark;
+                  // white is reserved for selection and primary actions.
+                  color: AppColors.danger,
                 ),
               ),
             ],
@@ -2288,7 +2389,11 @@ class _ControlButton extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(icon, size: 16, color: onPressed != null ? fg : AppColors.darkMuted),
+              Icon(
+                icon,
+                size: 16,
+                color: onPressed != null ? fg : AppColors.darkMuted,
+              ),
               const SizedBox(height: 2),
               Text(
                 label,

@@ -270,21 +270,19 @@ void main() {
       expect(find.textContaining('Photo 4 of 4 selected'), findsOneWidget);
       expect(find.text('Replacing shot 4'), findsNothing);
 
-      // Select the second photo explicitly, then retake it.
-      // The 4-cut strip is very tall, so the thumbnail strip starts below the
-      // fold and has to be scrolled into view before it can be tapped.
-      final Finder secondThumbnail = find.byKey(
-        const ValueKey('review-thumbnail-1'),
-      );
-      await tester.ensureVisible(secondThumbnail);
+      // Select the second photo explicitly, then retake it. The review grid is
+      // the selection surface now (a single-column 4-cut strip is shown 2x2),
+      // so tapping a cell selects that photo.
+      final Finder secondCell = find.byKey(const ValueKey('review-cell-1'));
+      await tester.ensureVisible(secondCell);
       await tester.pump();
-      await tester.tap(secondThumbnail);
+      await tester.tap(secondCell);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(
         find.textContaining('Photo 2 of 4 selected'),
         findsOneWidget,
-        reason: 'tapping a thumbnail must select that photo',
+        reason: 'tapping a photo must select that photo',
       );
 
       await tester.tap(find.text('Retake'));
@@ -311,11 +309,9 @@ void main() {
       expect(find.byType(ReviewScreen), findsOneWidget);
       expect(find.textContaining('Photo 2 of 4 selected'), findsOneWidget);
       // Every slot is still populated after the replacement.
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('review-thumbnail-3')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('review-cell-3')));
       await tester.pump();
-      expect(find.byKey(const ValueKey('review-thumbnail-3')), findsOneWidget);
+      expect(find.byKey(const ValueKey('review-cell-3')), findsOneWidget);
     });
 
     testWidgets('retake is a no-op when no photos have been captured', (
@@ -703,8 +699,9 @@ void main() {
         );
       }
 
-      testWidgets('plays the shutter click once per capture when enabled',
-          (tester) async {
+      testWidgets('plays the shutter click once per capture when enabled', (
+        tester,
+      ) async {
         await seedPreferences(shutterSound: true);
         final TestTiming timing = TestTiming();
         final List<CameraSessionState> states = <CameraSessionState>[];
@@ -758,8 +755,9 @@ void main() {
         expect(sound.prepareCount, 0);
       });
 
-      testWidgets('the flash overlay is shown when the preference is on',
-          (tester) async {
+      testWidgets('the flash overlay is shown when the preference is on', (
+        tester,
+      ) async {
         await seedPreferences(flashAnimation: true);
         final TestTiming timing = TestTiming();
         final List<CameraSessionState> states = <CameraSessionState>[];
@@ -782,10 +780,7 @@ void main() {
         }
         await tester.pump();
 
-        expect(
-          find.byKey(const ValueKey('capture-flash')),
-          findsOneWidget,
-        );
+        expect(find.byKey(const ValueKey('capture-flash')), findsOneWidget);
 
         gate.complete();
         await _runSession(
@@ -795,8 +790,9 @@ void main() {
         );
       });
 
-      testWidgets('the flash overlay is hidden when the preference is off',
-          (tester) async {
+      testWidgets('the flash overlay is hidden when the preference is off', (
+        tester,
+      ) async {
         await seedPreferences(flashAnimation: false);
         final TestTiming timing = TestTiming();
         final List<CameraSessionState> states = <CameraSessionState>[];
@@ -841,16 +837,16 @@ void main() {
             home: CameraScreen(
               layout: PhotoLayout.pair2,
               cameraProvider: () async => <CameraDescription>[_front],
-              controllerFactory:
-                  (CameraDescription d, ResolutionPreset p) =>
-                      _FakeCameraController(d),
+              controllerFactory: (CameraDescription d, ResolutionPreset p) =>
+                  _FakeCameraController(d),
               captureProvider: () async => XFile('/tmp/shot.jpg'),
               timing: timing,
               shutterSound: _RecordingShutterSound(),
-              onStateChange: (CameraSessionState state, {int? countdown, int? shot}) {
-                states.add(state);
-                if (countdown != null) countdowns.add(countdown);
-              },
+              onStateChange:
+                  (CameraSessionState state, {int? countdown, int? shot}) {
+                    states.add(state);
+                    if (countdown != null) countdowns.add(countdown);
+                  },
             ),
           ),
         );
