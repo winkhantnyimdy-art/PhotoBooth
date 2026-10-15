@@ -2,6 +2,68 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
+/// Decides **who owns the live preview's rotation**.
+///
+/// ## Why this exists
+///
+/// A camera preview can end up upright in exactly one of two ways: the
+/// platform's preview surface rotates the frames for us, or the app applies a
+/// `RotatedBox` on top. Doing both rotates the feed twice, which is what the
+/// Android build was doing: `CameraX` is created with
+/// `Preview.setTargetRotation(display.rotation)` and the `camera_android`
+/// plugin wraps the texture in `RotatedPreviewDelegate`, so
+/// `CameraController.buildPreview()` already returns an upright feed. Adding our
+/// own quarter turn on top turned the whole viewfinder 90 degrees sideways.
+///
+/// Verified on the Android emulator (API 37) by measuring the light/dark axis
+/// of the live feed against the captured JPEG: the feed's axis was horizontal
+/// (sideways scene) while the EXIF-normalised capture's was vertical (upright).
+///
+/// The rule is deliberately narrow and explicit rather than a guess:
+///
+/// * **Android** - the plugin + CameraX own rotation. The app must not rotate.
+/// * **Everything else** - unchanged legacy behaviour, kept until that platform
+///   is in scope. PhotoBooth is Android-only, so this path is not exercised.
+abstract final class PreviewOrientation {
+  /// Whether the platform's own preview surface already presents frames upright.
+  static bool platformProvidesUprightSurface(TargetPlatform platform) {
+    return platform == TargetPlatform.android;
+  }
+
+  /// Quarter turns the **app** must add on top of the platform preview.
+  ///
+  /// Zero wherever the platform already rotates. Only a platform that hands
+  /// back a raw, unrotated stream needs the app to correct it.
+  static int appQuarterTurns({
+    required TargetPlatform platform,
+    required Size? streamSize,
+    required bool shootInPortrait,
+  }) {
+    if (platformProvidesUprightSurface(platform)) return 0;
+    return CameraGeometry.uprightQuarterTurns(
+      streamSize: streamSize,
+      shootInPortrait: shootInPortrait,
+    );
+  }
+
+  /// The aspect ratio (width / height) of the image the preview *presents*.
+  ///
+  /// This is independent of who rotates: a raw 1280x720 buffer presented
+  /// upright is a 9:16 portrait frame, whether the platform or the app turned
+  /// it. Android reports the **buffer** size (1280x720) while displaying the
+  /// upright frame, so reading the raw ratio directly would letterbox a
+  /// portrait feed into a landscape box - the mirror image of the bug above.
+  static double presentedAspect({
+    required Size? streamSize,
+    required bool shootInPortrait,
+  }) {
+    return CameraGeometry.uprightAspect(
+      streamSize: streamSize,
+      shootInPortrait: shootInPortrait,
+    );
+  }
+}
+
 /// Pure geometry for turning a raw camera stream into an upright, full-bleed
 /// portrait viewfinder that matches what the exported strip will contain.
 ///
@@ -49,12 +111,12 @@ abstract final class CameraGeometry {
   }
 
   /// Whether the stored frame must be rotated a quarter turn to appear upright.
-///
-/// `true` when the frame's stored orientation differs from the orientation the
-/// user is shooting in. The comparison is symmetric: a landscape-native frame
-/// shot in portrait needs a quarter turn, and a portrait-native frame shot in
-/// landscape needs three.
-static bool streamIsRotated({
+  ///
+  /// `true` when the frame's stored orientation differs from the orientation the
+  /// user is shooting in. The comparison is symmetric: a landscape-native frame
+  /// shot in portrait needs a quarter turn, and a portrait-native frame shot in
+  /// landscape needs three.
+  static bool streamIsRotated({
     required Size? streamSize,
     required bool shootInPortrait,
   }) {
@@ -163,11 +225,14 @@ static bool streamIsRotated({
     required Rect cropWindow,
     double sourceAspect = 0,
   }) {
-    if (sourceSize.width <= 0 || sourceSize.height <= 0 || viewport.width <= 0) {
+    if (sourceSize.width <= 0 ||
+        sourceSize.height <= 0 ||
+        viewport.width <= 0) {
       return Offset.zero & sourceSize;
     }
-    final double aspect =
-        sourceAspect > 0 ? sourceAspect : sourceSize.width / sourceSize.height;
+    final double aspect = sourceAspect > 0
+        ? sourceAspect
+        : sourceSize.width / sourceSize.height;
     final Size drawn = coverSize(viewport: viewport, sourceAspect: aspect);
 
     final double scaleX = sourceSize.width / drawn.width;
@@ -177,7 +242,10 @@ static bool streamIsRotated({
     // so that axis's viewport origin maps *into* the drawn image by half the
     // overflow. The other axis is flush and contributes nothing.
     final double overflowX = math.max(0.0, (drawn.width - viewport.width) / 2);
-    final double overflowY = math.max(0.0, (drawn.height - viewport.height) / 2);
+    final double overflowY = math.max(
+      0.0,
+      (drawn.height - viewport.height) / 2,
+    );
 
     final double left = (cropWindow.left + overflowX) * scaleX;
     final double top = (cropWindow.top + overflowY) * scaleY;
@@ -222,14 +290,19 @@ static bool streamIsRotated({
     required Size viewport,
     required double uprightAspectRatio,
   }) {
-    if (viewport.width <= 0 || viewport.height <= 0 || uprightAspectRatio <= 0) {
+    if (viewport.width <= 0 ||
+        viewport.height <= 0 ||
+        uprightAspectRatio <= 0) {
       return 1.0;
     }
     final Size drawn = coverSize(
       viewport: viewport,
       sourceAspect: uprightAspectRatio,
     );
-    return math.max(drawn.width / viewport.width, drawn.height / viewport.height);
+    return math.max(
+      drawn.width / viewport.width,
+      drawn.height / viewport.height,
+    );
   }
 
   /// True when the upright frame covers [viewport] on both axes, i.e. when the
@@ -238,7 +311,9 @@ static bool streamIsRotated({
     required Size viewport,
     required double uprightAspectRatio,
   }) {
-    if (viewport.width <= 0 || viewport.height <= 0 || uprightAspectRatio <= 0) {
+    if (viewport.width <= 0 ||
+        viewport.height <= 0 ||
+        uprightAspectRatio <= 0) {
       return false;
     }
     final Size drawn = coverSize(
@@ -255,10 +330,7 @@ static bool streamIsRotated({
   ///
   /// Shared by the strip renderer so every photo is cover-cropped identically
   /// no matter its own dimensions.
-  static Rect coverRect({
-    required Size source,
-    required Size target,
-  }) {
+  static Rect coverRect({required Size source, required Size target}) {
     if (source.width <= 0 || source.height <= 0) return Offset.zero & target;
     final double sourceAspect = source.width / source.height;
     final double targetAspect = target.width / target.height;
@@ -275,30 +347,47 @@ static bool streamIsRotated({
 
   /// The sub-rectangle of a [source] image that ends up inside [target] after a
   /// cover fit.
-///
-/// [coverRect] deliberately overflows the target on one axis; only the part
-  /// inside the target survives, so that intersection is what gets mapped back
-  /// into source pixels. Scaling the overflowing rect directly (the previous
-  /// behaviour) returned coordinates outside the source image.
-  static Rect sourceRectForCover({
-    required Size source,
-    required Size target,
-  }) {
-    if (source.width <= 0 || source.height <= 0 ||
-        target.width <= 0 || target.height <= 0) {
+  ///
+  /// [coverRect] deliberately overflows the target on one axis and is
+  /// **centred**, so only its overlap with the target survives. That overlap is
+  /// expressed in target coordinates, so mapping it back into source pixels
+  /// needs both the source->drawn scale *and* drawn's origin:
+  ///
+  /// * scaling by `source / target` (what this used to do) is only correct when
+  ///   the source and target already share an aspect ratio. As soon as they
+  ///   differ, `drawn` overflows, `visible` collapses to the whole target, and
+  ///   the result becomes the **entire source image** - which `drawImageRect`
+  ///   then squashes into the cell. Every captured phone photo (9:16) was being
+  ///   squeezed into the 3:4 export cell this way.
+  /// * `drawn` is centred, so the kept region is centred too, which is exactly
+  ///   the crop the viewfinder frames.
+  static Rect sourceRectForCover({required Size source, required Size target}) {
+    if (source.width <= 0 ||
+        source.height <= 0 ||
+        target.width <= 0 ||
+        target.height <= 0) {
       return Offset.zero & source;
     }
     final Rect drawn = coverRect(source: source, target: target);
     final Rect visible = drawn.intersect(Offset.zero & target);
     if (visible.width <= 0 || visible.height <= 0) return Offset.zero & source;
 
-    final double scaleX = source.width / target.width;
-    final double scaleY = source.height / target.height;
+    // `drawn` is where the whole source lands, so source/drawn is the true
+    // scale. For a cover fit it is uniform, but keeping the axes separate
+    // mirrors [coverRect].
+    final double scaleX = source.width / drawn.width;
+    final double scaleY = source.height / drawn.height;
+
+    final double left = (visible.left - drawn.left) * scaleX;
+    final double top = (visible.top - drawn.top) * scaleY;
+    final double right = (visible.right - drawn.left) * scaleX;
+    final double bottom = (visible.bottom - drawn.top) * scaleY;
+
     return Rect.fromLTRB(
-      visible.left * scaleX,
-      visible.top * scaleY,
-      visible.right * scaleX,
-      visible.bottom * scaleY,
+      left.clamp(0.0, source.width),
+      top.clamp(0.0, source.height),
+      right.clamp(0.0, source.width),
+      bottom.clamp(0.0, source.height),
     );
   }
 }

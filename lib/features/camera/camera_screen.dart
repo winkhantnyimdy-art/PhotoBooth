@@ -654,63 +654,80 @@ class _CameraScreenState extends State<CameraScreen>
     final CameraController? controller = _controller;
     if (controller == null) return const SizedBox.shrink();
 
-    // The viewfinder fills the entire available area. The old implementation
-    // letterboxed a 16:9 box inside this viewport, which produced the narrow
-    // horizontal band with black bars reported on the iPhone.
+    // The exported cell aspect - the exact shape one captured photo becomes.
+    final double cellAspect =
+        PhotoStripGeometry.cellWidth(widget.layout) /
+        PhotoStripGeometry.cellHeight(widget.layout);
+
+    // The visible frame IS the captured frame.
+    //
+    // The viewfinder used to fill the whole viewport and draw a smaller crop
+    // rectangle inside it, so the user saw a large preview with a white box
+    // floating in the middle and had to guess which part was kept. Sizing the
+    // viewfinder to the exported cell aspect instead removes the guess
+    // entirely: the rounded rect the user frames against is exactly what is
+    // written to disk, because the renderer cover-crops the captured photo to
+    // this same aspect from the same centre.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: S.md),
-      child: ClipRRect(
-        borderRadius: R.all(R.lg),
-        child: DecoratedBox(
-          decoration: const BoxDecoration(color: AppColors.previewBackdrop),
-          child: Stack(
-            key: const ValueKey('camera-viewport'),
-            fit: StackFit.expand,
-            children: <Widget>[
-              KeyedSubtree(
-                key: ValueKey<CameraController>(controller),
-                child: PhotoViewfinder(
-                  controller: controller,
-                  borderRadius: R.all(R.lg),
-                  // The preview is fitted to this window and the exporter crops
-                  // to the same shape, so both come from one value and the
-                  // framing the user sees is the framing they get.
-                  outputAspect:
-                      PhotoStripGeometry.cellWidth(widget.layout) /
-                      PhotoStripGeometry.cellHeight(widget.layout),
-                  // Preview orientation follows the saved photo exactly.
-                  mirrorSelfies: _preferences.mirrorSelfies,
-                  overlay: ViewfinderCropGuide(
-                    outputAspect:
-                        PhotoStripGeometry.cellWidth(widget.layout) /
-                        PhotoStripGeometry.cellHeight(widget.layout),
+      child: Stack(
+        key: const ValueKey('camera-viewport'),
+        fit: StackFit.expand,
+        children: <Widget>[
+          Center(
+            child: AspectRatio(
+              key: const ValueKey('camera-preview-frame'),
+              aspectRatio: cellAspect,
+              child: ClipRRect(
+                borderRadius: R.all(R.lg),
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    color: AppColors.previewBackdrop,
+                  ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      KeyedSubtree(
+                        key: ValueKey<CameraController>(controller),
+                        child: PhotoViewfinder(
+                          controller: controller,
+                          borderRadius: R.all(R.lg),
+                          outputAspect: cellAspect,
+                          // Preview orientation follows the saved photo
+                          // exactly.
+                          mirrorSelfies: _preferences.mirrorSelfies,
+                        ),
+                      ),
+                      if (_sessionState == CameraSessionState.countdown)
+                        Positioned.fill(
+                          child: _CountdownOverlay(number: _countdownNumber),
+                        ),
+                      if (_sessionState == CameraSessionState.capturing &&
+                          _preferences.flashAnimationEnabled)
+                        const Positioned.fill(
+                          child: _FlashOverlay(key: ValueKey('capture-flash')),
+                        ),
+                      if (_sessionState.isActive)
+                        Positioned(
+                          top: S.md,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: _ProgressIndicator(
+                              captured: _sessionCount,
+                              total: widget.isRetake
+                                  ? 1
+                                  : widget.layout.photoCount,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
-              if (_sessionState == CameraSessionState.countdown)
-                Positioned.fill(
-                  child: _CountdownOverlay(number: _countdownNumber),
-                ),
-              if (_sessionState == CameraSessionState.capturing &&
-                  _preferences.flashAnimationEnabled)
-                const Positioned.fill(
-                  child: _FlashOverlay(key: ValueKey('capture-flash')),
-                ),
-              if (_sessionState.isActive)
-                Positioned(
-                  top: S.md,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: _ProgressIndicator(
-                      captured: _sessionCount,
-                      total: widget.isRetake ? 1 : widget.layout.photoCount,
-                    ),
-                  ),
-                ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

@@ -663,16 +663,20 @@ void main() {
       await tester.pump();
 
       // The flash is a childless ColoredBox: without StackFit.expand it would
-      // silently collapse to zero size and never be seen.
+      // silently collapse to zero size and never be seen. It fills the visible
+      // preview frame - the region that is actually captured - rather than the
+      // whole padded viewport, so the flash reads as light hitting the shot.
       final RenderBox flash = tester.renderObject<RenderBox>(
         find.byKey(const ValueKey('capture-flash')),
       );
-      final Size viewport = tester.getSize(
-        find.byKey(const ValueKey('camera-viewport')),
+      final Size frame = tester.getSize(
+        find.byKey(const ValueKey('camera-preview-frame')),
       );
-      expect(flash.size, viewport);
+      expect(flash.size, frame);
       expect(flash.size.width, greaterThan(0));
       expect(flash.size.height, greaterThan(0));
+      // And the frame itself is a real 3:4 portrait cell.
+      expect(frame.width / frame.height, closeTo(0.75, 0.02));
 
       gate.complete();
       await _runSession(

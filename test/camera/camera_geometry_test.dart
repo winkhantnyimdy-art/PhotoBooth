@@ -313,18 +313,40 @@ void main() {
           expect(dest.width / dest.height, closeTo(source.width / source.height, 1e-9));
           expect(dest.width, greaterThanOrEqualTo(target.width - 1e-6));
           expect(dest.height, greaterThanOrEqualTo(target.height - 1e-6));
-          // The chosen source sub-rect also keeps the source's shape.
+          // The region handed to drawImageRect is drawn into `target`, so it
+          // must have the TARGET's shape. This used to assert the *source*
+          // aspect instead, which a function returning the entire source image
+          // satisfies trivially - that is how the squash bug survived: every
+          // captured photo was being stretched into the 3:4 export cell.
           final Rect src = CameraGeometry.sourceRectForCover(
             source: source,
             target: target,
           );
           expect(
             src.width / src.height,
-            closeTo(source.width / source.height, 0.02),
-            reason: 'cropping a $source into $target must not distort it',
+            closeTo(target.width / target.height, 0.01),
+            reason:
+                'cropping a $source into $target must fill the cell exactly; a '
+                'different ratio here means drawImageRect would stretch it',
           );
           expect(src.width, lessThanOrEqualTo(source.width + 1e-6));
           expect(src.height, lessThanOrEqualTo(source.height + 1e-6));
+
+          // A cover crop really does crop when the aspects differ, and does it
+          // evenly - which is the centre crop the viewfinder frames.
+          final bool sameAspect =
+              (source.width / source.height - target.width / target.height).abs() <
+                  0.001;
+          if (!sameAspect) {
+            expect(
+              src.width < source.width - 1e-6 ||
+                  src.height < source.height - 1e-6,
+              isTrue,
+              reason: 'a mismatched cover fit must discard part of the source',
+            );
+            expect(src.left, closeTo(source.width - src.right, 0.5));
+            expect(src.top, closeTo(source.height - src.bottom, 0.5));
+          }
         }
       }
     });
@@ -449,17 +471,18 @@ void main() {
       );
     });
 
-    testWidgets('a landscape stream is rotated upright and still full-bleed', (
+    testWidgets('a landscape stream is presented upright with no app rotation', (
       tester,
     ) async {
       await tester.pumpWidget(
         host(controllerWith(_landscapeStream, CameraLensDirection.back), _phoneViewport),
       );
 
-      // A landscape-native stream is stored rotated, so the upright frame is
-      // portrait - which is why the box is taller than the viewport rather
-      // than a short wide band.
-      expect(find.byType(RotatedBox), findsOneWidget);
+      // Android's camera plugin already returns an upright feed (CameraX
+      // setTargetRotation + RotatedPreviewDelegate). Adding our own quarter
+      // turn on top rotated the whole viewfinder 90 degrees sideways, so the
+      // app must apply NO rotation of its own here.
+      expect(find.byType(RotatedBox), findsNothing);
 
       final Size feedBox = tester.getSize(
         find.byKey(const ValueKey('photobooth-feed-box')),
@@ -471,6 +494,32 @@ void main() {
         closeTo(1080 / 1920, 0.01),
         reason: 'the upright portrait frame must fill the viewfinder',
       );
+    });
+
+    testWidgets('a non-rotating platform still gets the legacy correction', (
+      tester,
+    ) async {
+      // Android-only in production, but the fallback must stay correct rather
+      // than silently regressing.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: _phoneViewport.width,
+              height: _phoneViewport.height,
+              child: PhotoViewfinder(
+                controller: controllerWith(
+                  _landscapeStream,
+                  CameraLensDirection.back,
+                ),
+                platform: TargetPlatform.iOS,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(RotatedBox), findsOneWidget);
     });
 
     testWidgets('a front camera is mirrored and a back camera is not', (

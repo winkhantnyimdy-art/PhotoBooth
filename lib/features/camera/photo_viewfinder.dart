@@ -12,33 +12,27 @@ import 'selfie_mirroring.dart';
 /// Matches `PhotoStripGeometry.cellAspect`, i.e. 3:4 portrait.
 const double kDefaultCaptureAspect = 3.0 / 4.0;
 
-/// A full-bleed, orientation-independent camera viewfinder.
+/// A full-bleed, orientation-correct camera viewfinder.
 ///
-/// ## What it fixes
+/// ## Orientation
 ///
-/// The stock `CameraPreview` letterboxes: it derives its box from the *device*
-/// orientation, which disagrees with the stream's own dimensions on iOS
-/// Safari. The result is a short wide band floating in a tall black viewport.
+/// Rotation is owned by exactly one layer. On Android the `camera` plugin's
+/// `buildPreview()` already returns an upright feed (CameraX
+/// `setTargetRotation` + `RotatedPreviewDelegate`), so this widget applies **no**
+/// rotation of its own - doing so rotated the whole viewfinder 90 degrees
+/// sideways. See [PreviewOrientation].
 ///
-/// This widget instead:
-/// 1. normalizes the stream to an upright aspect using [CameraGeometry], which
-///    only looks at the frame's real dimensions;
-/// 2. fits that upright stream so it **covers the crop window** - the region the
-///    exporter will actually keep - rather than covering the whole viewport;
-/// 3. mirrors exactly when the stored photo will be mirrored, so the preview and
-///    the capture agree.
+/// ## Framing
 ///
-/// ## Why the feed is fitted to the crop window
+/// The feed is cover-fitted so it always fills its box with no letterbox bars.
+/// The caller sizes that box to the exported photo-cell aspect, which means
+/// **what the user frames is exactly what is saved**: the viewfinder no longer
+/// draws a smaller crop rectangle inside a larger preview, so there is no
+/// misleading dead area and no overflow beyond the captured region.
 ///
-/// Fitting the stream to the entire viewport showed the user far more than
-/// survives the export. On a 393x852 viewport the 3:4 crop window is only
-/// 393x524, so roughly 40% of the height the user was framing against was
-/// cropped away after the fact - which reads as "the framing does not match".
-/// Fitting to the window means the preview is a true preview of the capture.
-///
-/// The underlying preview surface is produced by the plugin
-/// ([CameraController.buildPreview]); this widget only controls how it is
-/// transformed, so it behaves identically on Android, iOS and the web.
+/// Mirroring still happens here, because it is a widget-only concern that
+/// `takePicture()` cannot express. It is keyed off the same preference that
+/// decides the stored bytes, so preview and capture never disagree.
 class PhotoViewfinder extends StatelessWidget {
   const PhotoViewfinder({
     super.key,
@@ -48,6 +42,7 @@ class PhotoViewfinder extends StatelessWidget {
     this.overlay,
     this.outputAspect = kDefaultCaptureAspect,
     this.mirrorSelfies = true,
+    this.platform = TargetPlatform.android,
   });
 
   final CameraController controller;
@@ -57,15 +52,22 @@ class PhotoViewfinder extends StatelessWidget {
 
   final BorderRadius borderRadius;
 
-  /// Optional guides drawn on top of the feed (crop windows, rule of thirds).
+  /// Optional guides drawn on top of the feed. The default camera passes
+  /// nothing: the box is already the crop, so a guide would be noise.
   final Widget? overlay;
 
-  /// width / height of the region that becomes one photo cell.
+  /// width / height of the region that becomes one photo cell. Kept so callers
+  /// can reason about framing and tests can assert it; the feed is fitted to
+  /// whatever box it is given.
   final double outputAspect;
 
   /// The "Mirror selfies" preference, which decides preview orientation so it
   /// matches the saved photo.
   final bool mirrorSelfies;
+
+  /// Which platform's preview contract to honour. Defaults to the real one so
+  /// tests can exercise both without a device.
+  final TargetPlatform platform;
 
   @override
   Widget build(BuildContext context) {
@@ -74,14 +76,21 @@ class PhotoViewfinder extends StatelessWidget {
     }
 
     final Size? streamSize = controller.value.previewSize;
-    final int quarterTurns = CameraGeometry.uprightQuarterTurns(
+
+    // Only the platform that does NOT rotate gets a correction from the app.
+    final int quarterTurns = PreviewOrientation.appQuarterTurns(
+      platform: platform,
       streamSize: streamSize,
       shootInPortrait: shootInPortrait,
     );
-    final double uprightAspect = CameraGeometry.uprightAspect(
+
+    // The aspect of the frame as presented, which is the transpose of the raw
+    // buffer on Android because the platform already turned it upright.
+    final double uprightAspect = PreviewOrientation.presentedAspect(
       streamSize: streamSize,
       shootInPortrait: shootInPortrait,
     );
+
     final bool mirrored = SelfieMirroring.shouldMirrorPreview(
       direction: controller.description.lensDirection,
       mirrorSelfies: mirrorSelfies,
@@ -89,10 +98,6 @@ class PhotoViewfinder extends StatelessWidget {
 
     Widget feed = controller.buildPreview();
 
-    // Orientation is decided in exactly one place, [SelfieMirroring], from the
-    // same preference that decides the saved bytes. A widget-level transform
-    // cannot influence `takePicture()`, which is why this used to disagree
-    // with the capture on iOS Safari.
     if (mirrored) {
       feed = Transform(
         alignment: Alignment.center,
@@ -111,37 +116,36 @@ class PhotoViewfinder extends StatelessWidget {
     // is how a blank viewfinder happens.
     Widget scaled = LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final Size viewport = Size(
-          constraints.maxWidth,
-          constraints.maxHeight,
-        );
+        final Size viewport = Size(constraints.maxWidth, constraints.maxHeight);
+        if (viewport.width <= 0 || viewport.height <= 0) {
+          return const SizedBox.shrink();
+        }
 
-        // The region the exporter keeps.
-        final Rect window = CameraGeometry.cropWindow(
-          viewport: viewport,
-          outputAspect: outputAspect,
-        );
-
-        // Fill that window by covering it with the upright stream. `coverSize`
-        // is at least as large as the window on both axes, so the window is
-        // always full - never letterboxed, never a partial image.
+        // Cover the box: at least as large on both axes, exact on one, so the
+        // overflow is cropped and never letterboxed.
         final Size drawn = CameraGeometry.coverSize(
-          viewport: window.size,
+          viewport: viewport,
           sourceAspect: uprightAspect,
         );
 
         // A cover fit overflows on exactly one axis and the overflow is
-        // centred, so shifting by half of it puts the window over the centre of
-        // the feed - exactly the centre crop the renderer performs.
-        final double overflowX = math.max(0.0, (drawn.width - window.width) / 2);
-        final double overflowY = math.max(0.0, (drawn.height - window.height) / 2);
+        // centred, so shifting by half of it crops equally from both sides -
+        // the same centre crop the renderer performs on the saved photo.
+        final double overflowX = math.max(
+          0.0,
+          (drawn.width - viewport.width) / 2,
+        );
+        final double overflowY = math.max(
+          0.0,
+          (drawn.height - viewport.height) / 2,
+        );
 
         return Stack(
           clipBehavior: Clip.hardEdge,
           children: <Widget>[
             Positioned(
-              left: window.left - overflowX,
-              top: window.top - overflowY,
+              left: overflowX * -1,
+              top: overflowY * -1,
               width: drawn.width,
               height: drawn.height,
               child: SizedBox(
@@ -157,7 +161,6 @@ class PhotoViewfinder extends StatelessWidget {
       },
     );
 
-    // Clip so no part of the stream spills under neighbouring chrome.
     scaled = ClipRect(child: scaled);
 
     if (borderRadius == BorderRadius.zero) return scaled;
@@ -232,9 +235,8 @@ class _CropGuidePainter extends CustomPainter {
     final Path outside = Path.combine(
       PathOperation.difference,
       Path()..addRect(full),
-      Path()..addRRect(
-        RRect.fromRectAndRadius(window, const Radius.circular(12)),
-      ),
+      Path()
+        ..addRRect(RRect.fromRectAndRadius(window, const Radius.circular(12))),
     );
     canvas.drawPath(
       outside,

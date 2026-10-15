@@ -1166,13 +1166,17 @@ class _LayoutSwitcher extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(999),
-                        color: option == current
-                            ? AppColors.onDark
-                            : AppColors.darkElevated,
+                        // The selected chip used to be a solid white pill, which
+                        // read as an unlabelled blob above the editor and
+                        // competed with the photostrip. Selection is now a
+                        // white outline on the same dark fill, so it matches the
+                        // Minimal Dark language used everywhere else.
+                        color: AppColors.darkElevated,
                         border: Border.all(
                           color: option == current
                               ? AppColors.onDark
                               : AppColors.darkLine,
+                          width: option == current ? 1.5 : 1,
                         ),
                       ),
                       child: Text(
@@ -1181,7 +1185,7 @@ class _LayoutSwitcher extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: AppText.buttonSmall.copyWith(
                           color: option == current
-                              ? AppColors.onAccent
+                              ? AppColors.onDark
                               : AppColors.darkMuted,
                         ),
                       ),
