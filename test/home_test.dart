@@ -28,7 +28,7 @@ bool _isSelected(WidgetTester tester, String label) {
   final BoxDecoration decoration =
       card.decoration! as BoxDecoration;
   final Border border = decoration.border! as Border;
-  return border.top.color == AppColors.popPink;
+  return border.top.color == AppColors.onDark;
 }
 
 

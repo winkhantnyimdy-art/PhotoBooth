@@ -3,11 +3,8 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/art/checkerboard.dart';
-import '../../core/art/retro_sticker.dart';
 import '../../core/media/browser_capabilities.dart';
 import '../../core/media/photo_source.dart';
-import '../decorate/decoration_model.dart';
 import '../home/layout_geometry.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
@@ -472,7 +469,7 @@ class _CameraScreenState extends State<CameraScreen>
         }
       },
       child: Scaffold(
-        backgroundColor: AppColors.darkSurface,
+        backgroundColor: AppColors.darkBackground,
         body: SafeArea(
           child: Column(
             children: <Widget>[
@@ -480,7 +477,7 @@ class _CameraScreenState extends State<CameraScreen>
               Expanded(
                 child: _loading
                     ? const Center(
-                        child: CircularProgressIndicator(color: AppColors.hotPink),
+                        child: CircularProgressIndicator(color: AppColors.onDark),
                       )
                     : _error != null
                         ? _buildError()
@@ -491,7 +488,6 @@ class _CameraScreenState extends State<CameraScreen>
                             ],
                           ),
               ),
-              const CheckerboardPattern(height: 20),
             ],
           ),
         ),
@@ -602,13 +598,13 @@ class _CameraScreenState extends State<CameraScreen>
                   height: 62,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: AppColors.hotPink.withValues(alpha: 0.16),
+                    color: AppColors.darkElevated,
                     borderRadius: R.all(R.xl),
                   ),
                   child: const Icon(
                     Icons.no_photography_rounded,
                     size: 30,
-                    color: AppColors.hotPink,
+                    color: AppColors.darkMuted,
                   ),
                 ),
                 const SizedBox(height: S.md),
@@ -678,21 +674,6 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
                 ),
               ),
-              Positioned(
-                left: S.lg,
-                top: S.lg,
-                child: RetroSticker(type: StickerType.heart, size: 28),
-              ),
-              Positioned(
-                right: S.lg,
-                bottom: S.lg,
-                child: RetroSticker(type: StickerType.bunny, size: 50),
-              ),
-              Positioned(
-                left: S.md,
-                bottom: S.md,
-                child: RetroSticker(type: StickerType.star, size: 22),
-              ),
               if (_sessionState == CameraSessionState.countdown)
                 Positioned.fill(
                   child: _CountdownOverlay(number: _countdownNumber),
@@ -748,7 +729,7 @@ class _CameraScreenState extends State<CameraScreen>
                         borderRadius: BorderRadius.circular(999),
                         color: AppColors.darkElevated,
                         border: Border.all(
-                          color: AppColors.hotPink,
+                          color: AppColors.onDark,
                           width: 2,
                         ),
                       ),
@@ -932,23 +913,16 @@ class _ShutterButton extends StatelessWidget {
               padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.surface,
+                color: AppColors.darkElevated,
                 border: Border.all(
-                  color: enabled ? AppColors.hotPink : AppColors.lineStrong,
+                  color: enabled ? AppColors.onDark : AppColors.darkLine,
                   width: 3,
                 ),
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: AppColors.hotPink.withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
               ),
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: enabled ? AppColors.hotPink : AppColors.darkElevated,
+                  color: AppColors.darkBackground,
                 ),
                 child: Center(
                   child: Icon(
@@ -983,7 +957,7 @@ class _CountdownOverlay extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: AppColors.textPrimary.withValues(alpha: 0.82),
-            border: Border.all(color: AppColors.hotPink, width: 3),
+            border: Border.all(color: AppColors.onDark, width: 3),
           ),
           child: AnimatedSwitcher(
             duration: AppMotion.of(context, AppMotion.medium),
@@ -1086,10 +1060,10 @@ class _ProgressIndicator extends StatelessWidget {
                   height: 8,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: i < captured ? AppColors.hotPink : AppColors.onDark,
+                    color: i < captured ? AppColors.onDark : AppColors.onDark,
                     border: Border.all(
                       color: i < captured
-                          ? AppColors.hotPink
+                          ? AppColors.onDark
                           : AppColors.onDark.withValues(alpha: 0.5),
                       width: 1,
                     ),

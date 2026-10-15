@@ -53,16 +53,23 @@ abstract final class AppColors {
   static const Color success = Color(0xFF4F9D7E);
   static const Color previewBackdrop = Color(0xFF1B1A18);
 
-  // --- Dark workspace (Camera / Review / Decorate / Export) ---------------
-  /// Near-black editor canvas: "dark photographic" rather than grey Material.
-  static const Color darkSurface = Color(0xFF151416);
+  // --- Minimal Dark workspace (PhotoBooth V3) -----------------------------
+  /// Locked app background.
+  static const Color darkBackground = Color(0xFF101012);
 
-  /// Slightly lifted panels and chips that sit on [darkSurface].
-  static const Color darkElevated = Color(0xFF221F24);
+  /// Locked surfaces used by cards, panels, inputs.
+  static const Color darkSurface = Color(0xFF1C1C20);
 
-  /// Hairline/divider colour on dark surfaces.
-  static const Color darkLine = Color(0xFF37333C);
+  /// Slightly lifted panels and chips on [darkSurface].
+  static const Color darkElevated = Color(0xFF26262C);
 
-  /// Muted copy on dark surfaces.
-  static const Color darkMuted = Color(0xFFB7B1BD);
+  /// Borders/dividers on dark surfaces.
+  static const Color darkLine = Color(0xFF303036);
+
+  /// Secondary text on dark surfaces.
+  static const Color darkMuted = Color(0xFFA6A6AD);
+
+  /// Subtle silver accent for selection and affordances.
+  static const Color silver = Color(0xFFC7C7CC);
+
 }
