@@ -71,5 +71,4 @@ abstract final class AppColors {
 
   /// Subtle silver accent for selection and affordances.
   static const Color silver = Color(0xFFC7C7CC);
-
 }

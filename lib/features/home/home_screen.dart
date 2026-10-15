@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../core/art/bubble_logo.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
@@ -37,9 +36,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const _SettingsRoute()),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const _SettingsRoute()));
   }
 
   @override
@@ -53,86 +51,122 @@ class _HomeScreenState extends State<HomeScreen> {
             children: <Widget>[
               _buildTopBar(),
               Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: <Widget>[
-                      const SizedBox(height: S.lg),
-                      const PhotoBoothBubbleLogo(width: 118),
-                      const SizedBox(height: S.sm),
-                      Text(
-                        'PhotoBooth',
-                        style: AppText.display.copyWith(color: AppColors.onDark),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Capture, decorate, and save portrait strips.',
-                        textAlign: TextAlign.center,
-                        style: AppText.caption
-                            .copyWith(color: AppColors.darkMuted),
-                      ),
-                      const SizedBox(height: S.xl),
-                      MinimalPrimaryButton(
-                        label: 'Start Photo Booth',
-                        icon: Icons.camera_alt_rounded,
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => CameraScreen(layout: _selected),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: S.xl),
-                      const MinimalSectionHeading(
-                        title: 'Choose layout',
-                        subtitle: 'Tap a card to set the capture grid.',
-                      ),
-                      const SizedBox(height: S.md),
-                      Row(
-                        children: <Widget>[
-                          for (final PhotoLayout layout in PhotoLayout.values) ...<Widget>[
-                            Expanded(
-                              child: _LayoutCard(
-                                layout: layout,
-                                selected: layout == _selected,
-                                onTap: () => setState(() => _selected = layout),
+                child: LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    return SingleChildScrollView(
+                      child: ConstrainedBox(
+                        // Fill the viewport so the layout is balanced on tall
+                        // phones, but stay scrollable when text scaling or a
+                        // short screen makes the content taller than the page.
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight,
+                        ),
+                        child: IntrinsicHeight(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              const Spacer(flex: 3),
+                              const Center(
+                                child: MinimalWordmark(fontSize: 30),
                               ),
-                            ),
-                            if (layout != PhotoLayout.values.last)
-                              const SizedBox(width: S.xs),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: S.xl),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: MinimalSecondaryButton(
-                              label: 'Album',
-                              icon: Icons.photo_library_rounded,
-                              onPressed: _openAlbum,
-                            ),
+                              const SizedBox(height: S.sm),
+                              Text(
+                                'Capture, decorate, and save portrait strips.',
+                                textAlign: TextAlign.center,
+                                style: AppText.caption.copyWith(
+                                  color: AppColors.darkMuted,
+                                ),
+                              ),
+                              const Spacer(flex: 4),
+                              MinimalPrimaryButton(
+                                label: 'Start Photo Booth',
+                                icon: Icons.camera_alt_rounded,
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) =>
+                                          CameraScreen(layout: _selected),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const Spacer(flex: 4),
+                              _buildLayoutSection(),
+                              const Spacer(flex: 3),
+                              _buildFooterActions(),
+                              const SizedBox(height: S.lg),
+                            ],
                           ),
-                          const SizedBox(width: S.sm),
-                          Expanded(
-                            child: MinimalSecondaryButton(
-                              label: 'Settings',
-                              icon: Icons.settings_rounded,
-                              onPressed: _openSettings,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                      const SizedBox(height: S.lg),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  /// The layout chooser, presented as one surface so it reads as a single
+  /// decision rather than four loose cards.
+  Widget _buildLayoutSection() {
+    return Container(
+      padding: const EdgeInsets.all(S.md),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: R.all(R.lg),
+        border: Border.all(color: AppColors.darkLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const MinimalSectionHeading(
+            title: 'Choose layout',
+            subtitle: 'Tap a card to set the capture grid.',
+          ),
+          const SizedBox(height: S.md),
+          Row(
+            children: <Widget>[
+              for (final PhotoLayout layout in PhotoLayout.values) ...<Widget>[
+                Expanded(
+                  child: _LayoutCard(
+                    layout: layout,
+                    selected: layout == _selected,
+                    onTap: () => setState(() => _selected = layout),
+                  ),
+                ),
+                if (layout != PhotoLayout.values.last)
+                  const SizedBox(width: S.sm),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooterActions() {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: MinimalSecondaryButton(
+            label: 'Album',
+            icon: Icons.photo_library_rounded,
+            onPressed: _openAlbum,
+          ),
+        ),
+        const SizedBox(width: S.sm),
+        Expanded(
+          child: MinimalSecondaryButton(
+            label: 'Settings',
+            icon: Icons.settings_rounded,
+            onPressed: _openSettings,
+          ),
+        ),
+      ],
     );
   }
 
@@ -146,15 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _openAlbum,
             tooltip: 'Album',
           ),
-          const Expanded(
-            child: Center(
-              child: Icon(
-                Icons.local_see_rounded,
-                color: AppColors.darkMuted,
-                size: 20,
-              ),
-            ),
-          ),
+          const Spacer(),
           MinimalIconButton(
             icon: Icons.settings_rounded,
             onPressed: _openSettings,
@@ -213,37 +239,42 @@ class _LayoutCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: PressableScale(
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.all(S.xs),
-          decoration: BoxDecoration(
-            color: AppColors.darkElevated,
-            borderRadius: R.all(R.md),
-            border: Border.all(
-              color: selected ? AppColors.onDark : AppColors.darkLine,
-              width: selected ? 1.5 : 1,
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: layout.label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: PressableScale(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(vertical: S.sm, horizontal: 2),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.darkElevated : Colors.transparent,
+              borderRadius: R.all(R.md),
+              border: Border.all(
+                color: selected ? AppColors.onDark : AppColors.darkLine,
+                width: selected ? 1.5 : 1,
+              ),
             ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              SizedBox(
-                height: 42,
-                child: _GridThumbnail(layout: layout),
-              ),
-              const SizedBox(height: S.xs),
-              Text(
-                layout.label,
-                style: AppText.caption.copyWith(
-                  color: selected ? AppColors.onDark : AppColors.darkMuted,
-                  fontWeight: FontWeight.w700,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                SizedBox(height: 46, child: _GridThumbnail(layout: layout)),
+                const SizedBox(height: S.xs),
+                Text(
+                  layout.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption.copyWith(
+                    fontSize: 11.5,
+                    color: selected ? AppColors.onDark : AppColors.darkMuted,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -266,8 +297,8 @@ class _GridThumbnail extends StatelessWidget {
       children: List<int>.generate(layout.photoCount, (int i) => i).map((_) {
         return DecoratedBox(
           decoration: BoxDecoration(
-            color: AppColors.darkSurface,
-            borderRadius: BorderRadius.circular(3),
+            color: AppColors.darkBackground,
+            borderRadius: BorderRadius.circular(2),
           ),
         );
       }).toList(),

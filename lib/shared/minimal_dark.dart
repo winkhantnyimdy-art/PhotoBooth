@@ -24,10 +24,7 @@ class MinimalDarkScaffold extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.darkBackground,
       body: SafeArea(
-        child: Padding(
-          padding: padding,
-          child: child,
-        ),
+        child: Padding(padding: padding, child: child),
       ),
     );
   }
@@ -62,7 +59,9 @@ class MinimalIconButton extends StatelessWidget {
           height: S.touchTarget,
           child: Material(
             color: enabled ? AppColors.darkElevated : Colors.transparent,
-            shape: const CircleBorder(side: BorderSide(color: AppColors.darkLine)),
+            shape: const CircleBorder(
+              side: BorderSide(color: AppColors.darkLine),
+            ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: onPressed,
@@ -102,11 +101,7 @@ class MinimalPrimaryButton extends StatelessWidget {
         icon: icon == null
             ? const SizedBox.shrink()
             : Icon(icon, color: AppColors.darkBackground),
-        label: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.onDark,
           foregroundColor: AppColors.darkBackground,
@@ -155,13 +150,74 @@ class MinimalSecondaryButton extends StatelessWidget {
   }
 }
 
+/// Minimal Dark wordmark.
+///
+/// A monochrome camera glyph plus tight, wide-tracked lettering. Replaces the
+/// colourful Retro Pop bubble logo, which conflicted with the approved
+/// Minimal Dark direction.
+class MinimalWordmark extends StatelessWidget {
+  const MinimalWordmark({
+    super.key,
+    this.fontSize = 30,
+    this.showGlyph = true,
+    this.alignment = MainAxisAlignment.center,
+  });
+
+  /// Cap height of the wordmark text.
+  final double fontSize;
+
+  /// Whether the small camera glyph precedes the lettering.
+  final bool showGlyph;
+
+  /// How the glyph and text are placed on the cross axis.
+  final MainAxisAlignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'PhotoBooth',
+      header: true,
+      // FittedBox keeps the wordmark on one line on narrow screens and when
+      // the platform text scale is large, instead of overflowing the page.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: alignment,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            if (showGlyph) ...<Widget>[
+              Icon(
+                Icons.camera_alt_outlined,
+                size: fontSize * 0.78,
+                color: AppColors.onDark,
+              ),
+              SizedBox(width: fontSize * 0.3),
+            ],
+            Text(
+              'PhotoBooth',
+              textAlign: TextAlign.left,
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w700,
+                letterSpacing: fontSize * 0.02,
+                height: 1.1,
+                color: AppColors.onDark,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Rounded section heading with a secondary subtitle.
 class MinimalSectionHeading extends StatelessWidget {
-  const MinimalSectionHeading({
-    super.key,
-    required this.title,
-    this.subtitle,
-  });
+  const MinimalSectionHeading({super.key, required this.title, this.subtitle});
 
   final String title;
   final String? subtitle;
@@ -174,7 +230,10 @@ class MinimalSectionHeading extends StatelessWidget {
         Text(title, style: AppText.heading.copyWith(color: AppColors.onDark)),
         if (subtitle != null) ...<Widget>[
           const SizedBox(height: 2),
-          Text(subtitle!, style: AppText.caption.copyWith(color: AppColors.darkMuted)),
+          Text(
+            subtitle!,
+            style: AppText.caption.copyWith(color: AppColors.darkMuted),
+          ),
         ],
       ],
     );

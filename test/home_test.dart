@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:photo_booth/app/app.dart';
-import 'package:photo_booth/core/art/bubble_logo.dart';
+import 'package:photo_booth/shared/minimal_dark.dart';
 import 'package:photo_booth/core/theme/app_colors.dart';
 import 'package:photo_booth/core/theme/app_theme.dart';
 import 'package:photo_booth/features/home/home_screen.dart';
@@ -25,12 +25,10 @@ bool _isSelected(WidgetTester tester, String label) {
   final AnimatedContainer card = tester.widget<AnimatedContainer>(
     _layoutCard(label),
   );
-  final BoxDecoration decoration =
-      card.decoration! as BoxDecoration;
+  final BoxDecoration decoration = card.decoration! as BoxDecoration;
   final Border border = decoration.border! as Border;
   return border.top.color == AppColors.onDark;
 }
-
 
 void main() {
   group('HomeScreen', () {
@@ -38,7 +36,7 @@ void main() {
       await tester.pumpWidget(App(albumService: FakeAlbumService()));
       // The redesign paints the wordmark as a bubble logo rather than a Text
       // widget, so the brand is asserted by widget type now.
-      expect(find.byType(PhotoBoothBubbleLogo), findsAtLeastNWidgets(1));
+      expect(find.byType(MinimalWordmark), findsAtLeastNWidgets(1));
     });
 
     testWidgets('4 CUT is selected by default', (tester) async {
@@ -161,7 +159,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.close_rounded).first);
       await tester.pump();
       await tester.pump();
-      expect(find.byType(PhotoBoothBubbleLogo), findsAtLeastNWidgets(1));
+      expect(find.byType(MinimalWordmark), findsAtLeastNWidgets(1));
     });
   });
 
@@ -219,8 +217,10 @@ void main() {
         await tester.pumpAndSettle();
 
         // Branding and the primary action must both be usable.
-        expect(find.byType(PhotoBoothBubbleLogo), findsAtLeastNWidgets(1));
-        final Rect start = tester.getRect(find.textContaining('Start Photo Booth'));
+        expect(find.byType(MinimalWordmark), findsAtLeastNWidgets(1));
+        final Rect start = tester.getRect(
+          find.textContaining('Start Photo Booth'),
+        );
         expect(start.left, greaterThanOrEqualTo(0));
         expect(start.right, lessThanOrEqualTo(width));
         expect(start.height, greaterThan(0));
