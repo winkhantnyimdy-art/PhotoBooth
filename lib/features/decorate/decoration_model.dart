@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/filters/photo_effect.dart';
 import '../../core/filters/photo_filter.dart';
 import '../home/layout_model.dart';
 import 'frame_theme.dart';
@@ -37,7 +38,7 @@ enum UndoRedoAction {
 /// final photo strip composition. It is passed from DecorateScreen to
 /// ExportScreen (Checkpoint 5) for final rendering.
 ///
-/// No rendered bitmap bytes are stored here — only the configuration
+/// No rendered bitmap bytes are stored here  Eonly the configuration
 /// needed to generate the final image later.
 class DecorationState {
   const DecorationState({
@@ -47,7 +48,7 @@ class DecorationState {
     this.showDate = false,
     this.stickers = const [],
     this.texts = const [],
-    this.filter = PhotoFilterType.original,
+    this.filter = PhotoEffect.original,
     this.filterIntensity = 1.0,
     this.frameStyle = FrameStyle.polkaDot,
     this.frameTheme = FrameTheme.retroPop,
@@ -73,8 +74,8 @@ class DecorationState {
   /// Free text lines the user has placed on the strip.
   final List<TextPlacement> texts;
 
-  /// The chosen colour preset applied to every photo.
-  final PhotoFilterType filter;
+  /// The chosen effect applied to every photo.
+  final PhotoEffect filter;
 
   /// How strongly [filter] is applied, 0 (none) … 1 (full).
   final double filterIntensity;
@@ -82,7 +83,7 @@ class DecorationState {
   /// The paper/border treatment around the strip.
   final FrameStyle frameStyle;
 
-  /// The premium frame theme — a complete visual identity.
+  /// The premium frame theme  Ea complete visual identity.
   final FrameTheme frameTheme;
 
   /// Manual brightness/contrast/saturation/warmth tweaks.
@@ -102,7 +103,7 @@ class DecorationState {
     bool? showDate,
     List<StickerPlacement>? stickers,
     List<TextPlacement>? texts,
-    PhotoFilterType? filter,
+    PhotoEffect? filter,
     double? filterIntensity,
     FrameStyle? frameStyle,
     FrameTheme? frameTheme,

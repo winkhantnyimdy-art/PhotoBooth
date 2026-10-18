@@ -4,10 +4,11 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../core/filters/photo_effect.dart';
+import '../../core/filters/photo_filter.dart';
 import '../decorate/decoration_model.dart';
 import '../decorate/frame_theme.dart';
 import '../home/layout_model.dart';
-import '../../core/filters/photo_filter.dart';
 
 /// A saved PhotoBooth session that can be reopened for editing or re-export.
 ///
@@ -128,6 +129,9 @@ Map<String, dynamic> decorationStateToJson(DecorationState state) {
     'showDate': state.showDate,
     'stickers': state.stickers.map(_stickerPlacementToJson).toList(),
     'texts': state.texts.map(_textPlacementToJson).toList(),
+    // 'effect' is the V3 key; 'filter' is kept so a downgrade still reads
+    // a compatible value rather than losing the choice.
+    'effect': state.filter.name,
     'filter': state.filter.name,
     'filterIntensity': state.filterIntensity,
     'frameStyle': state.frameStyle.name,
@@ -150,7 +154,7 @@ DecorationState decorationStateFromJson(Map<String, dynamic> json) {
     texts: (json['texts'] as List)
         .map((e) => _textPlacementFromJson(e as Map<String, dynamic>))
         .toList(),
-    filter: PhotoFilterType.values.byName(json['filter'] as String),
+    filter: _decodeFilter(json['effect'] ?? json['filter']),
     filterIntensity: (json['filterIntensity'] as num).toDouble(),
     frameStyle: FrameStyle.values.byName(json['frameStyle'] as String),
     frameTheme: FrameTheme.values.byName(json['frameTheme'] as String),
@@ -159,6 +163,23 @@ DecorationState decorationStateFromJson(Map<String, dynamic> json) {
         ? DateTime.parse(json['dateOverride'] as String)
         : null,
   );
+}
+
+/// Resolves a persisted effect name, tolerating the v1.0.0 vocabulary.
+///
+/// Checkpoint 3 replaced `PhotoFilterType` with [PhotoEffect]. Records written
+/// by the published v1.0.0 build store the old enum's `.name`, so the legacy
+/// key is tried through [PhotoFilterType.toEffect]. A record naming neither
+/// falls back to Original rather than throwing: one unreadable effect must not
+/// cost the user their whole session.
+PhotoEffect _decodeFilter(Object? raw) {
+  if (raw is! String) return PhotoEffect.original;
+  final PhotoEffect? direct = PhotoEffect.tryParse(raw);
+  if (direct != null) return direct;
+  for (final PhotoFilterType legacy in PhotoFilterType.values) {
+    if (legacy.name == raw) return legacy.toEffect() as PhotoEffect;
+  }
+  return PhotoEffect.original;
 }
 
 Map<String, dynamic> _stickerPlacementToJson(StickerPlacement s) {

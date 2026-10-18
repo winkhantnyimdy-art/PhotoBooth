@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:photo_booth/core/filters/photo_filter.dart';
+import 'package:photo_booth/core/filters/photo_effect.dart';
 import 'package:photo_booth/features/album/album_record.dart';
 import 'package:photo_booth/features/album/album_service.dart';
 import 'package:photo_booth/features/album/album_session.dart';
@@ -53,7 +53,7 @@ void main() {
             background: BackgroundChoice.charcoal,
             style: DecorativeStyle.stars,
             showDate: true,
-            filter: PhotoFilterType.retroFilm,
+            filter: PhotoEffect.classicFilm,
             filterIntensity: 0.4,
             frameTheme: FrameTheme.vintageFilm,
           ),
@@ -73,7 +73,7 @@ void main() {
       expect(restored.thumbnail, isNotNull);
       expect(
         decorationStateFromJson(restored.decoration).filter,
-        PhotoFilterType.retroFilm,
+        PhotoEffect.classicFilm,
       );
       expect(
         decorationStateFromJson(restored.decoration).frameTheme,
@@ -165,7 +165,7 @@ void main() {
         background: BackgroundChoice.lavender,
         style: DecorativeStyle.hearts,
         showDate: true,
-        filter: PhotoFilterType.dreamyPink,
+        filter: PhotoEffect.dreamy,
         filterIntensity: 0.6,
         frameTheme: FrameTheme.kawaii,
         stickers: <StickerPlacement>[
@@ -187,7 +187,7 @@ void main() {
       expect(loaded.value.decorationState.background, BackgroundChoice.lavender);
       expect(loaded.value.decorationState.style, DecorativeStyle.hearts);
       expect(loaded.value.decorationState.showDate, isTrue);
-      expect(loaded.value.decorationState.filter, PhotoFilterType.dreamyPink);
+      expect(loaded.value.decorationState.filter, PhotoEffect.dreamy);
       expect(loaded.value.decorationState.filterIntensity, 0.6);
       expect(loaded.value.decorationState.frameTheme, FrameTheme.kawaii);
       expect(loaded.value.decorationState.stickers.single.type, StickerType.heart);

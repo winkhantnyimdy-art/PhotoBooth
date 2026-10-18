@@ -6,6 +6,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:photo_booth/core/filters/photo_effect.dart';
 import 'package:photo_booth/core/filters/photo_filter.dart';
 import 'package:photo_booth/features/decorate/decoration_model.dart';
 import 'package:photo_booth/features/decorate/frame_theme.dart';
@@ -14,6 +15,10 @@ import 'package:photo_booth/features/home/layout_model.dart';
 
 /// Writes a small, colourful placeholder photo per grid cell so the renderer
 /// has real pixels to colour-process.
+///
+/// The fixture is deliberately asymmetric - a blue field, a pink disc in the
+/// upper left and a yellow block in the lower right - so a mirrored or
+/// transposed effect cannot hide behind an average.
 Future<List<XFile>> _samplePhotos() async {
   final Directory dir = await Directory.systemTemp.createTemp('pb_filter');
   final ui.PictureRecorder recorder = ui.PictureRecorder();
@@ -53,7 +58,7 @@ const DecorationState _base = DecorationState(
 );
 
 void main() {
-  group('PhotoStripRenderer filter parity', () {
+  group('PhotoStripRenderer effect parity', () {
     late PhotoStripRenderer renderer;
     late List<XFile> photos;
 
@@ -70,64 +75,92 @@ void main() {
       );
     }
 
-    test('a chosen filter changes the exported pixels', () async {
+    test('a chosen effect changes the exported pixels', () async {
       final Uint8List original = await renderWith(_base);
-      final Uint8List retro = await renderWith(
+      final Uint8List film = await renderWith(
         _base.copyWith(
-          filter: PhotoFilterType.retroFilm,
+          filter: PhotoEffect.classicFilm,
           filterIntensity: 1,
         ),
       );
-      final Uint8List vivid = await renderWith(
+      final Uint8List flash = await renderWith(
         _base.copyWith(
-          filter: PhotoFilterType.vividPop,
+          filter: PhotoEffect.y2kFlash,
           filterIntensity: 1,
         ),
       );
 
-      expect(retro, isNot(orderedEquals(original)));
-      expect(vivid, isNot(orderedEquals(original)));
-      expect(vivid, isNot(orderedEquals(retro)));
+      expect(film, isNot(orderedEquals(original)));
+      expect(flash, isNot(orderedEquals(original)));
+      expect(flash, isNot(orderedEquals(film)));
     });
 
     test('strength 0 exports byte-identical to Original', () async {
       final Uint8List original = await renderWith(_base);
-      for (final PhotoFilterType type in PhotoFilterType.values) {
+      for (final PhotoEffect effect in PhotoEffect.values) {
         final Uint8List zero = await renderWith(
-          _base.copyWith(filter: type, filterIntensity: 0),
+          _base.copyWith(filter: effect, filterIntensity: 0),
         );
         expect(
           zero,
           orderedEquals(original),
-          reason: '${type.label} at strength 0 must match Original',
+          reason: '${effect.label} at strength 0 must match Original',
         );
       }
     });
 
-    test('every preset is export parity with a live preview', () async {
-      // The preview resolves the exact same matrix via buildColorFilter; here
-      // we only assert the exporter consumes it without dropping a preset.
-      final Set<List<int>> signatures =
-          <List<int>>{};
-      for (final PhotoFilterType type in PhotoFilterType.values) {
-        final Uint8List bytes = await renderWith(
-          _base.copyWith(filter: type, filterIntensity: 1),
+    test('all fifteen effects produce distinguishable exports', () async {
+      // Comparing a prefix of the compressed bytes would only prove the PNG
+      // headers differ, which says nothing about the effect. This measures
+      // decoded pixels instead, so "fifteen nearly identical overlays" fails
+      // here rather than shipping.
+      final Map<PhotoEffect, _PixelStats> stats = <PhotoEffect, _PixelStats>{};
+      for (final PhotoEffect effect in PhotoEffect.values) {
+        stats[effect] = await _measure(
+          await renderWith(
+            _base.copyWith(filter: effect, filterIntensity: 1),
+          ),
         );
-        signatures.add(bytes.take(4096).toList());
       }
-      expect(signatures.length, PhotoFilterType.values.length);
+
+      expect(stats.length, 15, reason: 'the catalogue must hold fifteen');
+
+      final List<PhotoEffect> effects = stats.keys.toList();
+      for (int i = 0; i < effects.length; i++) {
+        for (int j = i + 1; j < effects.length; j++) {
+          final double distance =
+              stats[effects[i]]!.distanceTo(stats[effects[j]]!);
+          expect(
+            distance,
+            greaterThanOrEqualTo(0.75),
+            reason: '${effects[i].label} and ${effects[j].label} are too alike '
+                '(mean-channel distance $distance)',
+          );
+        }
+      }
     });
 
-    test('Film Grain adds the noise layer only at strength > 0', () async {
+    test('Original exports identically to a neutral edit', () async {
+      final Uint8List original = await renderWith(_base);
+      final Uint8List explicit = await renderWith(
+        _base.copyWith(
+          filter: PhotoEffect.original,
+          filterIntensity: 1,
+        ),
+      );
+      expect(explicit, orderedEquals(original));
+    });
+
+    test('Grain adds the noise layer only at strength > 0', () async {
       final Uint8List grained = await renderWith(
         _base.copyWith(
-          filter: PhotoFilterType.filmGrain,
+          filter: PhotoEffect.grain,
           filterIntensity: 1,
         ),
       );
       final Uint8List zero = await renderWith(
         _base.copyWith(
-          filter: PhotoFilterType.filmGrain,
+          filter: PhotoEffect.grain,
           filterIntensity: 0,
         ),
       );
@@ -136,11 +169,28 @@ void main() {
         grained,
         orderedEquals(await renderWith(
           _base.copyWith(
-            filter: PhotoFilterType.filmGrain,
+            filter: PhotoEffect.grain,
             filterIntensity: 1,
           ),
         )),
         reason: 'grain must stay deterministic for the same inputs',
+      );
+    });
+
+    test('bloom effects lift highlights without touching the shadows', () async {
+      // A single white block on a black field: screen blending should raise the
+      // white and leave the black where it is. An alpha composite would lift
+      // the black too, so this distinguishes the two implementations.
+      final Uint8List dream = await renderWith(
+        _base.copyWith(filter: PhotoEffect.dreamy, filterIntensity: 1),
+      );
+      final Uint8List plain = await renderWith(_base);
+      final _PixelStats dreamStats = await _measure(dream);
+      final _PixelStats plainStats = await _measure(plain);
+      expect(
+        dreamStats.luma,
+        greaterThan(plainStats.luma),
+        reason: 'bloom must add light',
       );
     });
 
@@ -196,5 +246,69 @@ void main() {
         reason: 'captions must render deterministically',
       );
     });
+
+    test('stickers and text survive an applied effect', () async {
+      // Compatibility check: compositing order must leave the decorations on
+      // top of the graded photos rather than under them.
+      final Uint8List plain = await renderWith(_base);
+      final Uint8List decorated = await renderWith(
+        _base.copyWith(
+          filter: PhotoEffect.vintage,
+          filterIntensity: 1,
+          texts: const <TextPlacement>[
+            TextPlacement(text: 'Smile!', x: 0.5, y: 0.9, color: Colors.white),
+          ],
+        ),
+      );
+      expect(decorated, isNot(orderedEquals(plain)));
+    });
   });
+}
+
+/// Mean colour across a decoded export, used to judge how far apart two
+/// effects actually look.
+class _PixelStats {
+  const _PixelStats(this.r, this.g, this.b, this.luma);
+
+  final double r;
+  final double g;
+  final double b;
+  final double luma;
+
+  /// Mean absolute per-channel difference, in 0…255 channel units.
+  double distanceTo(_PixelStats other) {
+    final double dr = (r - other.r).abs();
+    final double dg = (g - other.g).abs();
+    final double db = (b - other.b).abs();
+    final double dl = (luma - other.luma).abs();
+    return (dr + dg + db + dl) / 4;
+  }
+}
+
+/// Decodes an exported PNG and averages its channels.
+Future<_PixelStats> _measure(Uint8List png) async {
+  final ui.Codec codec = await ui.instantiateImageCodec(png);
+  final ui.FrameInfo frame = await codec.getNextFrame();
+  final ByteData? data = await frame.image.toByteData(
+    format: ui.ImageByteFormat.rawRgba,
+  );
+  frame.image.dispose();
+  codec.dispose();
+
+  final Uint8List rgba = data!.buffer.asUint8List();
+  int r = 0;
+  int g = 0;
+  int b = 0;
+  double luma = 0;
+  final int pixels = rgba.length ~/ 4;
+  for (int i = 0; i < rgba.length; i += 4) {
+    final int pr = rgba[i];
+    final int pg = rgba[i + 1];
+    final int pb = rgba[i + 2];
+    r += pr;
+    g += pg;
+    b += pb;
+    luma += (0.299 * pr) + (0.587 * pg) + (0.114 * pb);
+  }
+  return _PixelStats(r / pixels, g / pixels, b / pixels, luma / pixels);
 }

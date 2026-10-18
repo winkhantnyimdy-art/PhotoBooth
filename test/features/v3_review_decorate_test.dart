@@ -510,6 +510,12 @@ void main() {
     });
 
     testWidgets('editing state survives switching tools', (tester) async {
+      // Portrait, like the emulator verification: see the intensity-slider
+      // test in review_decorate_test for why the surface matters here.
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+
       await tester.pumpWidget(
         _app(
           DecorateScreen(layout: PhotoLayout.grid4, photos: const <XFile>[]),
@@ -517,8 +523,20 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.bySemanticsLabel('Retro Film filter'));
+      // Warm is the third chip, comfortably inside the tray viewport without
+      // scrolling the shelf.
+      await tester.tap(find.bySemanticsLabel('Warm effect'));
       await tester.pumpAndSettle();
+
+      bool selected(String label) =>
+          tester
+              .widget<Semantics>(find.bySemanticsLabel(label))
+              .properties
+              .selected ??
+      false;
+
+      expect(selected('Warm effect'), isTrue, reason: 'the tap landed');
+      expect(selected('Original effect'), isFalse);
 
       // Visit another tool and come back: the selection must persist.
       await tester.tap(find.text('Adjust'));
@@ -526,7 +544,11 @@ void main() {
       await tester.tap(find.text('Filters'));
       await tester.pumpAndSettle();
 
-      expect(find.bySemanticsLabel('Retro Film filter'), findsOneWidget);
+      // Asserted through the selected flag, not through finder presence:
+      // every chip is in the tree whether or not it is scrolled into view,
+      // so presence alone would not prove anything.
+      expect(selected('Warm effect'), isTrue, reason: 'selection survives');
+      expect(selected('Original effect'), isFalse);
     });
 
     testWidgets('the editor renders without overflow under 1.3x text scale', (

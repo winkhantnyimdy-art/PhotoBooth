@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:photo_booth/core/filters/photo_effect.dart';
 import 'package:photo_booth/core/filters/photo_filter.dart';
 import 'package:photo_booth/core/theme/app_theme.dart';
 import 'package:photo_booth/features/album/album_builder.dart';
@@ -100,7 +101,7 @@ void main() {
         background: BackgroundChoice.charcoal,
         style: DecorativeStyle.hearts,
         showDate: true,
-        filter: PhotoFilterType.retroFilm,
+        filter: PhotoEffect.classicFilm,
         filterIntensity: 0.8,
         frameTheme: FrameTheme.vintageFilm,
         stickers: <StickerPlacement>[

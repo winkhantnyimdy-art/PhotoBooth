@@ -7,9 +7,9 @@ import 'package:flutter/material.dart';
 import '../../core/art/frame_theme_painter.dart';
 import '../../core/art/retro_sticker.dart';
 import '../../core/art/text_overlay.dart';
-import '../../core/filters/film_grain.dart';
-import '../../core/media/photo_source.dart';
 import '../../core/media/preview_decode.dart';
+import '../../core/filters/effect_image.dart';
+import '../../core/filters/photo_effect.dart';
 import '../../core/filters/photo_filter.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
@@ -95,6 +95,17 @@ class _DecorateScreenState extends State<DecorateScreen> {
   final TextEditingController _textController = TextEditingController();
   Color _textColor = Colors.white;
 
+  /// Horizontal controller for the effect shelf, kept so the selected effect
+  /// can be scrolled into view as the user moves through the fifteen.
+  final ScrollController _effectScroll = ScrollController();
+
+  /// True while a thumbnail is held to compare against the original.
+  ///
+  /// Deliberately not part of [DecorationState]: a comparison is a transient
+  /// view, never an edit, so it must not land in the undo history or be
+  /// persisted.
+  bool _comparing = false;
+
   /// Pinch-to-zoom for the photostrip.
   ///
   /// A 4 CUT strip is a tall 1x4 column, so at fit size it renders as a narrow
@@ -153,6 +164,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
 
   @override
   void dispose() {
+    _effectScroll.dispose();
     _zoom.removeListener(_onZoomChanged);
     _zoom.dispose();
     _textController.dispose();
@@ -263,7 +275,11 @@ class _DecorateScreenState extends State<DecorateScreen> {
           child: _Composition(
             layout: _layout,
             photos: widget.photos,
-            state: _state,
+            // A comparison hold swaps only the effect, never the stickers,
+            // text, frames or adjustments underneath it.
+            state: _comparing
+                ? _state.copyWith(filter: PhotoEffect.original)
+                : _state,
             selectedSticker: _selectedSticker,
             selectedText: _selectedText,
             onStickerTap: (int i) => setState(() {
@@ -334,10 +350,16 @@ class _DecorateScreenState extends State<DecorateScreen> {
   Widget _buildTray() {
     final double screen = MediaQuery.sizeOf(context).height;
     // The tray is the only thing competing with the strip for height, so it is
-    // kept to a third of the viewport. Every tool panel scrolls internally, so
-    // a shorter tray costs reachability nothing while the photostrip - the
-    // reason the screen exists - grows by roughly a third.
-    final double trayHeight = (screen * 0.32).clamp(212.0, 300.0).toDouble();
+    // kept to roughly a third of the viewport. Every tool panel scrolls
+    // internally, so a shorter tray costs reachability nothing while the
+    // photostrip - the reason the screen exists - stays dominant.
+    //
+    // 0.36 rather than 0.32: the Filters tab is header + strength slider +
+    // a 104 dp shelf + a hint. At 0.32 the viewport ended inside the slider
+    // and the control painted nothing at its resting scroll position, which
+    // made the primary control of the tab look absent (visible in the
+    // Checkpoint 2 captures as a thumb sliver under the finish button).
+    final double trayHeight = (screen * 0.36).clamp(212.0, 340.0).toDouble();
 
     return Container(
       decoration: const BoxDecoration(
@@ -464,48 +486,69 @@ class _DecorateScreenState extends State<DecorateScreen> {
           trailing: '${(_state.filterIntensity * 100).round()}%',
         ),
         const SizedBox(height: S.sm),
+        // The strength control sits directly under the section header, not
+        // under the shelf. The tray viewport is ~150 dp; with the slider below
+        // the 104 dp shelf it landed exactly on the viewport cut and painted
+        // nothing - the Checkpoint 2 captures show the same clipped control -
+        // while the tap target still worked, so the control looked absent.
+        // Above the shelf it is visible and reachable without scrolling.
+        _DarkSlider(
+          key: const ValueKey<String>('filter-intensity'),
+          label: 'Strength',
+          semanticLabel: 'Effect strength',
+          value: _state.filterIntensity,
+          min: 0,
+          max: 1,
+          display: '${(_state.filterIntensity * 100).round()}%',
+          // Disabled on Original, because there is nothing there to grade.
+          // Keeping the control visible but inert is the clearest signal that
+          // picking an effect is what makes strength meaningful.
+          onChanged: _state.filter == PhotoEffect.original
+              ? null
+              : _changeEffectIntensity,
+        ),
+        const SizedBox(height: S.sm),
         SizedBox(
-          height: 96,
+          height: 104,
           child: SingleChildScrollView(
+            controller: _effectScroll,
             scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: S.md),
             child: Row(
               children: <Widget>[
-                for (final PhotoFilterType type in PhotoFilterType.values)
+                for (final PhotoEffect effect in PhotoEffect.values)
                   Padding(
                     padding: const EdgeInsets.only(right: S.sm),
                     child: _FilterThumb(
-                      type: type,
+                      effect: effect,
                       sample: _photos().isEmpty ? null : _photos().first,
-                      selected: _state.filter == type,
-                      onTap: () => setState(() {
-                        _state = _state.copyWith(filter: type);
-                      }),
+                      selected: _state.filter == effect,
+                      // Holding a thumbnail compares against the untouched
+                      // original without committing a change, which is the
+                      // fastest way to judge a subtle grade.
+                      onCompareStart: () => setState(() => _comparing = true),
+                      onCompareEnd: () => setState(() => _comparing = false),
+                      onTap: () => _changeEffect(effect),
                     ),
                   ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: S.md),
-        _DarkSlider(
-          key: const ValueKey<String>('filter-intensity'),
-          label: 'Strength',
-          value: _state.filterIntensity,
-          min: 0,
-          max: 1,
-          display: '${(_state.filterIntensity * 100).round()}%',
-          onChanged: _state.filter == PhotoFilterType.original
-              ? null
-              : (double v) => setState(() {
-                  _state = _state.copyWith(filterIntensity: v);
-                }),
-        ),
-        if (_state.filter == PhotoFilterType.original)
-          const _Hint('Pick a filter above, then fine-tune its strength.')
+        // One hint line, not two. The panel is a fixed height and the
+        // strength slider is a primary control: a second explanatory line
+        // pushed it below the fold, so the disclosure is folded into the
+        // same row rather than given a line of its own.
+        if (_state.filter == PhotoEffect.original)
+          const _Hint(
+            'Original leaves the photo untouched. Digital simulation, '
+            'not scanned film.',
+          )
         else
           _Hint(
             '${_state.filter.label} at '
-            '${(_state.filterIntensity * 100).round()}% strength.',
+            '${(_state.filterIntensity * 100).round()}% - hold a thumbnail to '
+            'compare. Digital simulation, not scanned film.',
           ),
       ],
     );
@@ -905,8 +948,27 @@ class _DecorateScreenState extends State<DecorateScreen> {
     );
   }
 
-  void _resetDecoration() {
+  /// Selects a new effect, recording the previous state so the choice is
+  /// undoable like every other edit in this screen.
+  void _changeEffect(PhotoEffect effect) {
+    if (_state.filter == effect) return;
     _undoRedo.record(_state);
+    setState(() {
+      _state = _state.copyWith(filter: effect);
+    });
+  }
+
+  /// Adjusts effect strength, also recorded so a mis-tap on the track is
+  /// recoverable.
+  void _changeEffectIntensity(double value) {
+    if (_state.filterIntensity == value) return;
+    _undoRedo.record(_state);
+    setState(() {
+      _state = _state.copyWith(filterIntensity: value);
+    });
+  }
+
+  void _resetDecoration() {    _undoRedo.record(_state);
     setState(() {
       _state = DecorationState(
         layout: _layout,
@@ -1226,12 +1288,13 @@ class _Composition extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool onDark = state.background == BackgroundChoice.charcoal;
-    final List<double> matrix = buildMatrix(
+    // The identical recipe the PNG exporter resolves, so the thumbnail, this
+    // preview and the saved file cannot disagree.
+    final EffectRecipe recipe = EffectRecipe.resolve(
       state.filter,
       state.filterIntensity,
-      state.adjustments,
+      adjustments: state.adjustments,
     );
-    final bool filtered = !isIdentityMatrix(matrix);
 
     return ClipRRect(
       borderRadius: R.all(R.md),
@@ -1290,17 +1353,23 @@ class _Composition extends StatelessWidget {
                       layout: layout,
                       photos: photos,
                       gutter: gutter,
-                      colorFilter: filtered ? ColorFilter.matrix(matrix) : null,
+                      recipe: recipe,
                     ),
                   ),
                 ),
-                if (state.filter.hasGrain && state.filterIntensity > 0)
+                // Grain covers the whole photo area as one pass, with the same
+                // painter and the same deterministic seed the exporter uses.
+                // A per-cell pass would stamp one speck pattern into all four.
+                if (recipe.grainAmount > 0)
                   Positioned(
                     left: pad,
                     right: pad,
                     top: pad,
                     height: math.max(0, gridHeight - (pad * 2)),
-                    child: FilmGrainOverlay(intensity: state.filterIntensity),
+                    child: EffectGrainOverlay(
+                      amount: recipe.grainAmount,
+                      seed: EffectRecipe.grainSeed,
+                    ),
                   ),
                 if (state.style != DecorativeStyle.clean)
                   Positioned(
@@ -1432,13 +1501,15 @@ class _PhotoGrid extends StatelessWidget {
     required this.layout,
     required this.photos,
     required this.gutter,
-    required this.colorFilter,
+    required this.recipe,
   });
 
   final PhotoLayout layout;
   final List<XFile> photos;
   final double gutter;
-  final ColorFilter? colorFilter;
+
+  /// Resolved once for the whole grid; every cell renders identically.
+  final EffectRecipe recipe;
 
   @override
   Widget build(BuildContext context) {
@@ -1479,7 +1550,7 @@ class _PhotoGrid extends StatelessWidget {
                     height: cell.height,
                     child: _FilteredImage(
                       photo: photos[i],
-                      colorFilter: colorFilter,
+                      recipe: recipe,
                       decodeWidth: decodeWidth,
                     ),
                   ),
@@ -1492,25 +1563,30 @@ class _PhotoGrid extends StatelessWidget {
   }
 }
 
+/// One photo cell in the Decorate composition.
+///
+/// The effect is resolved once by the caller and handed straight to
+/// [EffectImage], which paints through the same canvas primitives the PNG
+/// exporter uses. That is what keeps the preview and the saved file in
+/// agreement for colour, grain and glow.
 class _FilteredImage extends StatelessWidget {
   const _FilteredImage({
     required this.photo,
-    required this.colorFilter,
+    required this.recipe,
     this.decodeWidth,
   });
 
   final XFile photo;
-  final ColorFilter? colorFilter;
-
-  /// Caps the decode so a 12 MP frame does not become a 48 MB bitmap just to
-  /// fill one preview cell. Null keeps the full-resolution decode.
+  final EffectRecipe recipe;
   final int? decodeWidth;
 
   @override
   Widget build(BuildContext context) {
-    final Widget image = PhotoImage(photo: photo, decodeWidth: decodeWidth);
-    if (colorFilter == null) return image;
-    return ColorFiltered(colorFilter: colorFilter!, child: image);
+    return EffectImage(
+      photo: photo,
+      recipe: recipe,
+      decodeWidth: decodeWidth,
+    );
   }
 }
 
@@ -1857,6 +1933,7 @@ class _DarkSlider extends StatelessWidget {
     required this.max,
     required this.display,
     required this.onChanged,
+    this.semanticLabel,
   });
 
   final String label;
@@ -1865,6 +1942,12 @@ class _DarkSlider extends StatelessWidget {
   final double max;
   final String display;
   final ValueChanged<double>? onChanged;
+
+  /// Overrides the visible [label] for assistive technology.
+  ///
+  /// "Strength" is ambiguous on its own because the screen has one slider per
+  /// section; the semantic form names what is actually being adjusted.
+  final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -1893,11 +1976,20 @@ class _DarkSlider extends StatelessWidget {
             thumbColor: AppColors.onDark,
             overlayColor: AppColors.onDark.withValues(alpha: 0.18),
           ),
-          child: Slider(
-            value: value.clamp(min, max),
-            min: min,
-            max: max,
-            onChanged: onChanged,
+          child: Semantics(
+            label: semanticLabel ?? label,
+            // Announce the live value so the adjustment is legible without
+            // sight, and mark the control's state when it cannot be changed.
+            value: display,
+            enabled: onChanged != null,
+            child: ExcludeSemantics(
+              child: Slider(
+                value: value.clamp(min, max),
+                min: min,
+                max: max,
+                onChanged: onChanged,
+              ),
+            ),
           ),
         ),
       ],
@@ -1907,36 +1999,53 @@ class _DarkSlider extends StatelessWidget {
 
 class _FilterThumb extends StatelessWidget {
   const _FilterThumb({
-    required this.type,
+    required this.effect,
     required this.sample,
     required this.selected,
     required this.onTap,
+    this.onCompareStart,
+    this.onCompareEnd,
   });
 
-  final PhotoFilterType type;
+  final PhotoEffect effect;
   final XFile? sample;
   final bool selected;
   final VoidCallback onTap;
 
+  /// Press-and-hold compares the whole preview against the original.
+  final VoidCallback? onCompareStart;
+  final VoidCallback? onCompareEnd;
+
+  /// Chip edge in logical pixels; the image inside is inset by the border.
+  static const double _chip = 72;
+  static const double _inset = 4;
+
   @override
   Widget build(BuildContext context) {
-    final List<double> matrix = buildMatrix(type, 1, const PhotoAdjustments());
-    final Widget base = sample != null
-        // A 64 px chip was decoding the whole 12 MP frame. Capping the decode
-        // here is the single biggest win in the editor: this row alone held as
-        // many full-size bitmaps as there were filters.
-        ? PhotoImage(
-            photo: sample!,
-            width: 64,
-            height: 64,
-            decodeWidth: PreviewDecode.forSize(
-              64,
-              MediaQuery.devicePixelRatioOf(context),
+    // Thumbnail, preview and export all resolve the same recipe, so a chip
+    // shows the treatment the user is about to get - grain and glow included.
+    final EffectRecipe recipe = EffectRecipe.resolve(effect, 1);
+    final double imageSide = _chip - (_inset * 2);
+
+    // A small chip was decoding the whole 12 MP frame. Capping the decode is
+    // the single biggest win in the editor: this row alone held as many
+    // full-size bitmaps as there were effects.
+    final Widget graded = sample != null
+        ? SizedBox(
+            width: imageSide,
+            height: imageSide,
+            child: EffectImage(
+              photo: sample!,
+              recipe: recipe,
+              decodeWidth: PreviewDecode.forSize(
+                imageSide,
+                MediaQuery.devicePixelRatioOf(context),
+              ),
             ),
           )
         : Container(
-            width: 64,
-            height: 64,
+            width: imageSide,
+            height: imageSide,
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -1953,18 +2062,22 @@ class _FilterThumb extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '${type.label} filter',
+      label: '${effect.label} effect',
       excludeSemantics: true,
       child: GestureDetector(
         onTap: onTap,
+        onLongPressStart: onCompareStart == null
+            ? null
+            : (_) => onCompareStart!(),
+        onLongPressEnd: onCompareEnd == null ? null : (_) => onCompareEnd!(),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             AnimatedContainer(
               duration: AppMotion.of(context, AppMotion.fast),
-              width: 68,
-              height: 68,
-              padding: const EdgeInsets.all(2),
+              width: _chip,
+              height: _chip,
+              padding: const EdgeInsets.all(_inset),
               decoration: BoxDecoration(
                 borderRadius: R.all(R.sm),
                 border: Border.all(
@@ -1974,19 +2087,14 @@ class _FilterThumb extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: R.all(R.xs + 2),
-                child: isIdentityMatrix(matrix)
-                    ? base
-                    : ColorFiltered(
-                        colorFilter: ColorFilter.matrix(matrix),
-                        child: base,
-                      ),
+                child: graded,
               ),
             ),
             const SizedBox(height: 4),
             SizedBox(
-              width: 70,
+              width: _chip + 2,
               child: Text(
-                type.label,
+                effect.label,
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

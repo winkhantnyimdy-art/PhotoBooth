@@ -9,7 +9,7 @@ import 'package:camera/camera.dart';
 import '../../core/art/frame_theme_painter.dart';
 import '../../core/art/sticker_artwork.dart';
 import '../../core/art/text_overlay.dart';
-import '../../core/filters/film_grain.dart';
+import '../../core/filters/photo_effect.dart';
 import '../../core/filters/photo_filter.dart';
 import '../../core/media/photo_source.dart';
 import '../../core/theme/app_colors.dart';
@@ -72,18 +72,24 @@ class PhotoStripRenderer {
         contentInset: PhotoStripGeometry.outerPadding,
       );
 
-      // The colour matrix shared by the preview and this export. Identity when
-      // the user is on Original at 0 strength, which skips the filter entirely.
-      final List<double> matrix = buildMatrix(
+      // The single resolved effect description shared with the Decorate
+      // preview. Matrix, grain and bloom all come from this one object, which
+      // is what makes the preview and the export agree by construction rather
+      // than by coincidence.
+      final EffectRecipe recipe = EffectRecipe.resolve(
         decorationState.filter,
         decorationState.filterIntensity,
-        decorationState.adjustments,
+        adjustments: decorationState.adjustments,
       );
-      final ui.ColorFilter? colorFilter = isIdentityMatrix(matrix)
+      final ui.ColorFilter? colorFilter = isIdentityMatrix(recipe.matrix)
           ? null
-          : ui.ColorFilter.matrix(matrix);
+          : ui.ColorFilter.matrix(recipe.matrix);
 
-      // 3. Photo cells, row-major in capture order.
+      // 3. Photo cells, row-major in capture order. The cover-crop source
+      // rects are kept so the bloom pass samples exactly the pixels the base
+      // pass drew, rather than re-deriving a different crop.
+      final List<ui.Rect> cellSources = <ui.Rect>[];
+      final List<ui.Rect> cellTargets = <ui.Rect>[];
       for (int i = 0; i < photos.length; i++) {
         if (i >= layout.photoCount) break;
         final ui.Rect cell = PhotoStripGeometry.cellRect(layout, i);
@@ -94,23 +100,41 @@ class PhotoStripRenderer {
           (cell.width * 2).round().clamp(1, 4096),
         );
         decodedPhotos.add(image);
-        _drawFramedImage(canvas, image, cell, colorFilter);
+        final ui.Rect source = _drawFramedImage(
+          canvas,
+          image,
+          cell,
+          colorFilter,
+        );
+        cellSources.add(source);
+        cellTargets.add(cell);
       }
 
-    // 3b. Film grain sits over the photos only, inside the frame border.
-    if (decorationState.filter.hasGrain &&
-          decorationState.filterIntensity > 0) {
-        final ui.Rect content = ui.Rect.fromLTWH(
-          PhotoStripGeometry.outerPadding,
-          PhotoStripGeometry.outerPadding,
-          exportWidth - (PhotoStripGeometry.outerPadding * 2),
-          gridHeight - (PhotoStripGeometry.outerPadding * 2),
+      // 3b. Bloom, then grain, over the photos only and inside the frame
+      // border, in the same order the preview composites them. The grain
+      // covers the whole photo area as a single pass: seeding each cell with
+      // the same value would repeat one speck pattern four times.
+      final ui.Rect content = ui.Rect.fromLTWH(
+        PhotoStripGeometry.outerPadding,
+        PhotoStripGeometry.outerPadding,
+        exportWidth - (PhotoStripGeometry.outerPadding * 2),
+        gridHeight - (PhotoStripGeometry.outerPadding * 2),
+      );
+      if (recipe.bloomAmount > 0) {
+        EffectBloom.paintCells(
+          canvas,
+          recipe,
+          decodedPhotos,
+          cellSources,
+          cellTargets,
         );
-        FilmGrain.paint(
+      }
+      if (recipe.grainAmount > 0) {
+        EffectGrain.paint(
           canvas,
           content,
-          decorationState.filterIntensity,
-          seed: exportWidth.toInt(),
+          recipe.grainAmount,
+          seed: EffectRecipe.grainSeed,
         );
       }
 
@@ -186,7 +210,7 @@ class PhotoStripRenderer {
   ///
   /// [colorFilter], when provided, is the shared preset/strength matrix, so the
   /// exported pixels match the previewed pixels exactly.
-  void _drawFramedImage(
+  ui.Rect _drawFramedImage(
     ui.Canvas canvas,
     ui.Image image,
     ui.Rect cell, [
@@ -219,6 +243,7 @@ class PhotoStripRenderer {
         ..colorFilter = colorFilter,
     );
     canvas.restore();
+    return source;
   }
 
   /// Decodes one captured photo into a [ui.Image], preserving its own aspect.

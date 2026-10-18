@@ -8,6 +8,7 @@ import 'package:photo_booth/features/camera/camera_preferences.dart';
 import 'package:photo_booth/features/decorate/decoration_model.dart';
 import 'package:photo_booth/features/decorate/frame_theme.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
+import 'package:photo_booth/core/filters/photo_effect.dart';
 import 'package:photo_booth/core/filters/photo_filter.dart';
 
 void main() {
@@ -111,7 +112,7 @@ void main() {
         texts: [
           TextPlacement(text: 'Hello', x: 0.5, y: 0.8, color: Colors.white, scale: 0.1),
         ],
-        filter: PhotoFilterType.retroFilm,
+        filter: PhotoEffect.classicFilm,
         filterIntensity: 0.75,
         frameStyle: FrameStyle.filmEdge,
         frameTheme: FrameTheme.vintageFilm,
@@ -142,7 +143,7 @@ void main() {
       expect(restored.decorationState.stickers.first.rotation, 0.3);
       expect(restored.decorationState.texts.length, 1);
       expect(restored.decorationState.texts.first.text, 'Hello');
-      expect(restored.decorationState.filter, PhotoFilterType.retroFilm);
+      expect(restored.decorationState.filter, PhotoEffect.classicFilm);
       expect(restored.decorationState.filterIntensity, 0.75);
       expect(restored.decorationState.frameStyle, FrameStyle.filmEdge);
       expect(restored.decorationState.frameTheme, FrameTheme.vintageFilm);

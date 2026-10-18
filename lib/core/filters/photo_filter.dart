@@ -1,5 +1,7 @@
 import 'dart:ui' as ui;
 
+import 'photo_effect.dart';
+
 // The colour-filter engine behind the Decorate screen.
 //
 // Every preset is a 4x5 colour matrix in the same row-major layout that
@@ -17,7 +19,14 @@ import 'dart:ui' as ui;
 // matrix, so strength 0 is exactly Original for every preset, and the output
 // is deterministic for fixed inputs.
 
-/// A single-tap photographic look, matching the design's filter shelf.
+/// The **legacy** effect shelf from PhotoBooth v1.0.0.
+///
+/// Checkpoint 3 replaced this with [PhotoEffect], a fifteen-effect catalogue
+/// with stable identifiers. This enum is kept only so album records written by
+/// the published v1.0.0 build still open: their JSON stores the old `.name`,
+/// which [PhotoEffect.tryParse] does not know. Use [toEffect] to migrate one.
+///
+/// Do not add effects here.
 enum PhotoFilterType {
   original('Original'),
   softGlow('Soft Glow'),
@@ -27,6 +36,21 @@ enum PhotoFilterType {
   dreamyPink('Dreamy Pink'),
   filmGrain('Film Grain'),
   classicBw('Classic B&W');
+
+  /// Maps a v1.0.0 preset onto its closest V3 equivalent.
+  ///
+  /// The mapping is lossy by nature - two old presets collapse onto one new
+  /// look - but it keeps an old album readable rather than forcing a reset.
+  Object toEffect() => switch (this) {
+        PhotoFilterType.original => PhotoEffect.original,
+        PhotoFilterType.softGlow => PhotoEffect.soft,
+        PhotoFilterType.coolBlue => PhotoEffect.cool,
+        PhotoFilterType.filmGrain => PhotoEffect.grain,
+        PhotoFilterType.classicBw => PhotoEffect.mono,
+        PhotoFilterType.retroFilm => PhotoEffect.classicFilm,
+        PhotoFilterType.dreamyPink => PhotoEffect.dreamy,
+        PhotoFilterType.vividPop => PhotoEffect.y2kFlash,
+      };
 
   const PhotoFilterType(this.label);
 
@@ -216,11 +240,22 @@ ui.ColorFilter buildColorFilter(
 }
 
 /// True when [matrix] leaves every channel untouched (an identity transform).
-bool isIdentityMatrix(List<double> matrix, {double epsilon = 1e-6}) {
-  for (int i = 0; i < matrix.length; i++) {
-    if ((matrix[i] - ColorMatrix.identity[i]).abs() > epsilon) return false;
-  }
-  return true;
+bool isIdentityMatrix(List<double> matrix, {double epsilon = 1e-6}) =>
+    ColorMatrix.isIdentity(matrix, epsilon: epsilon);
+
+
+/// An RGB triple in 0…1 used to describe tints inside a colour matrix.
+class FilterColor {
+  const FilterColor(this.r, this.g, this.b);
+
+  final double r;
+  final double g;
+  final double b;
+
+  @override
+  String toString() =>
+      'FilterColor(${r.toStringAsFixed(2)}, ${g.toStringAsFixed(2)}, '
+      '${b.toStringAsFixed(2)})';
 }
 
 /// 4x5 colour-matrix maths.
@@ -299,6 +334,82 @@ abstract final class ColorMatrix {
       0, 0, b, 0, lift * 0.6, //
       0, 0, 0, 1, 0, //
     ];
+  }
+
+/// A sepia toning towards [amount] 0…1.
+  ///
+  /// Classic sepia weights (0.393, 0.769, 0.189) for red, the inverse for
+  /// blue, blended against the identity so [amount] 0 is a no-op.
+  static List<double> sepia(double amount) {
+    final double t = amount.clamp(0.0, 1.0);
+    return <double>[
+      1 - t + (0.393 * t), 0, 0, 0, 0, //
+      (0.769 * t), 1 - t + (0.769 * t), 0, 0, 0, //
+      (0.189 * t), 0, 1 - t + (0.189 * t), 0, 0, //
+      0, 0, 0, 1, 0, //
+    ];
+  }
+
+  /// Per-channel gain with no cross-talk, for the slight sensor casts.
+  ///
+  /// Keeping the off-diagonal terms at zero is what makes this read as a
+  /// sensor bias rather than a colour cast.
+  static List<double> channelBias({
+    required double red,
+    required double green,
+    required double blue,
+  }) {
+    return <double>[
+      red, 0, 0, 0, 0, //
+      0, green, 0, 0, 0, //
+      0, 0, blue, 0, 0, //
+      0, 0, 0, 1, 0, //
+    ];
+  }
+
+  /// Lifts shadows towards [shadowColor] by [amount] 0…1.
+  ///
+  /// A 4x5 colour matrix is affine, so it cannot distinguish shadow from
+  /// highlight. This is therefore a *global* lift in the shadow's hue at low
+  /// opacity, applied under a contrast squeeze so the midtones stay put. It is
+  /// an approximation of split toning, and the UI does not claim otherwise.
+  static List<double> shadowLift({
+    required FilterColor shadowColor,
+    required double amount,
+  }) {
+    final double t = amount.clamp(0.0, 1.0);
+    return <double>[
+      1 - t + (t * shadowColor.r * 2), 0, 0, 0, 0, //
+      0, 1 - t + (t * shadowColor.g * 2), 0, 0, 0, //
+      0, 0, 1 - t + (t * shadowColor.b * 2), 0, 0, //
+      0, 0, 0, 1, 0, //
+    ];
+  }
+
+  /// Tints highlights towards [highlightColor] by [amount] 0…1.
+  ///
+  /// Composed as a gain above 1 so it mostly affects the brighter end of the
+  /// range, which is the closest an affine matrix gets to highlight-only
+  /// grading.
+  static List<double> highlightTint({
+    required FilterColor highlightColor,
+    required double amount,
+  }) {
+    final double t = amount.clamp(0.0, 1.0);
+    return <double>[
+      1 + ((highlightColor.r - 1) * t), 0, 0, 0, 0, //
+      0, 1 + ((highlightColor.g - 1) * t), 0, 0, 0, //
+      0, 0, 1 + ((highlightColor.b - 1) * t), 0, 0, //
+      0, 0, 0, 1, 0, //
+    ];
+  }
+
+  /// True when [matrix] is the identity transform.
+  static bool isIdentity(List<double> matrix, {double epsilon = 1e-6}) {
+    for (int i = 0; i < matrix.length; i++) {
+      if ((matrix[i] - identity[i]).abs() > epsilon) return false;
+    }
+    return true;
   }
 
   /// Composes two matrices: the result applies [b] first, then [a].

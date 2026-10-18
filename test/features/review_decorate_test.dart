@@ -138,21 +138,32 @@ void main() {
         expect(find.text(section), findsOneWidget, reason: section);
       }
 
-      // All eight filters, all six frames, all four border styles, all four
+      // All fifteen effects, all six frames, all four border styles, all four
       // patterns and all eight sticker types remain.
+      //
+      // Checkpoint 3 replaced the eight v1.0.0 presets with a fifteen-effect
+      // catalogue, so this list is the new vocabulary. The accessibility label
+      // is "<effect> effect", matching the on-screen section title.
       await tester.tap(find.text('Filters'));
       await tester.pumpAndSettle();
       for (final String label in <String>[
         'Original',
-        'Soft Glow',
-        'Retro Film',
-        'Vivid Pop',
-        'Cool Blue',
-        'Dreamy Pink',
-        'Film Grain',
-        'Classic B&W',
+        'Soft',
+        'Warm',
+        'Cool',
+        '35mm',
+        'Vintage',
+        'Grain',
+        'Faded',
+        'Classic Film',
+        'Y2K Flash',
+        'CCD',
+        'Tokyo Night',
+        'Mono',
+        'Noir',
+        'Dreamy',
       ]) {
-        expect(find.bySemanticsLabel('$label filter'), findsOneWidget);
+        expect(find.bySemanticsLabel('$label effect'), findsOneWidget);
       }
 
       await tester.tap(find.text('Frames'));
@@ -292,18 +303,29 @@ void main() {
     });
 
     testWidgets('filter shelf drives a real intensity slider', (tester) async {
+      // Portrait, like the emulator verification: in the default 800x600
+      // landscape surface the tray is so short that the shelf and the slider
+      // fall below its viewport cut, which says nothing about the phone.
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+
       await tester.pumpWidget(
         _app(const DecorateScreen(layout: PhotoLayout.grid4, photos: <XFile>[])),
       );
       await tester.pumpAndSettle();
 
-      // Opens on Filters with Original selected, so strength is inactive.
+      // Opens on Effects with Original selected, so strength is inactive.
       Slider slider() => tester.widget<Slider>(find.byType(Slider));
       expect(slider().onChanged, isNull);
 
-      // Picking a non-Original preset activates the strength slider, and
+      // Picking a non-Original effect activates the strength slider, and
       // tapping its track moves it off the default.
-      await tester.tap(find.bySemanticsLabel('Retro Film filter'));
+      //
+      // Warm is the third chip, so it sits inside the tray viewport without
+      // any scrolling. Whether all fifteen are reachable through the shelf's
+      // own horizontal scroll is covered by the emulator verification.
+      await tester.tap(find.bySemanticsLabel('Warm effect'));
       await tester.pumpAndSettle();
       expect(slider().onChanged, isNotNull);
 
@@ -314,9 +336,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(slider().value, lessThan(0.5));
 
-      // Every thumbnail really is colour-processed; Original's chip still
-      // renders without a colour filter while others keep identity at 0.
-      expect(find.bySemanticsLabel('Original filter'), findsOneWidget);
+      // Every thumbnail really is rendered; Original keeps the first slot.
+      expect(find.bySemanticsLabel('Original effect'), findsOneWidget);
     });
 
     testWidgets('captions can be added and edited on the fly', (tester) async {
