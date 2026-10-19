@@ -23,6 +23,7 @@ class AlbumSession {
     required this.decorationState,
     required this.thumbnailBytes,
     this.name,
+    this.thumbnailIsStrip = false,
   });
 
   /// Unique identifier for this session.
@@ -45,6 +46,12 @@ class AlbumSession {
 
   /// Thumbnail image bytes for the album grid (typically 200x200).
   final Uint8List thumbnailBytes;
+
+  /// Whether [thumbnailBytes] depicts the complete rendered photostrip.
+  ///
+  /// Legacy sessions predate strip thumbnails and store a single source photo;
+  /// this flag lets the album distinguish them and upgrade honestly.
+  final bool thumbnailIsStrip;
 
   /// Optional user-assigned name.
   final String? name;
@@ -73,6 +80,7 @@ class AlbumSession {
     DecorationState? decorationState,
     Uint8List? thumbnailBytes,
     String? name,
+    bool? thumbnailIsStrip,
   }) {
     return AlbumSession(
       id: id ?? this.id,
@@ -82,6 +90,7 @@ class AlbumSession {
       decorationState: decorationState ?? this.decorationState,
       thumbnailBytes: thumbnailBytes ?? this.thumbnailBytes,
       name: name ?? this.name,
+      thumbnailIsStrip: thumbnailIsStrip ?? this.thumbnailIsStrip,
     );
   }
 
@@ -97,6 +106,7 @@ class AlbumSession {
       'decorationState': decorationStateToJson(decorationState),
       'thumbnailBytes': base64Encode(thumbnailBytes),
       'name': name,
+      'thumbnailIsStrip': thumbnailIsStrip,
     };
   }
 
@@ -116,6 +126,7 @@ class AlbumSession {
       ),
       thumbnailBytes: base64Decode(json['thumbnailBytes'] as String),
       name: json['name'] as String?,
+      thumbnailIsStrip: json['thumbnailIsStrip'] == true,
     );
   }
 }

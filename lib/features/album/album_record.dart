@@ -33,6 +33,7 @@ class AlbumRecord {
     this.thumbnail,
     this.name,
     this.schemaVersion = kAlbumRecordSchemaVersion,
+    this.thumbnailIsStrip = false,
   });
 
   final String id;
@@ -52,6 +53,7 @@ class AlbumRecord {
 
   final String? name;
   final int schemaVersion;
+  final bool thumbnailIsStrip;
 
   /// Photo key for [index] within this session.
   String photoKey(int index) => '$id/$index';
@@ -77,6 +79,7 @@ class AlbumRecord {
     Uint8List? thumbnail,
     String? name,
     int? schemaVersion,
+    bool? thumbnailIsStrip,
   }) {
     return AlbumRecord(
       id: id ?? this.id,
@@ -87,6 +90,7 @@ class AlbumRecord {
       thumbnail: thumbnail ?? this.thumbnail,
       name: name ?? this.name,
       schemaVersion: schemaVersion ?? this.schemaVersion,
+      thumbnailIsStrip: thumbnailIsStrip ?? this.thumbnailIsStrip,
     );
   }
 
@@ -101,6 +105,7 @@ class AlbumRecord {
     // the record so the album grid renders without touching photo blobs.
     'thumbnail': thumbnail == null ? null : base64Encode(thumbnail!),
     'name': name,
+    'thumbnailIsStrip': thumbnailIsStrip,
   };
 
   /// Strict decode used when writing.
@@ -120,6 +125,7 @@ class AlbumRecord {
         ? null
         : base64Decode(json['thumbnail'] as String),
     name: json['name'] as String?,
+    thumbnailIsStrip: json['thumbnailIsStrip'] == true,
   );
 
   /// Tolerant decode used when reading rows that may predate a schema change.
@@ -175,6 +181,7 @@ class AlbumRecord {
     thumbnail: thumbnail,
     name: name,
     missingPhotos: missingPhotos,
+    thumbnailIsStrip: thumbnailIsStrip,
   );
 }
 
@@ -188,6 +195,7 @@ class AlbumSummary {
     this.thumbnail,
     this.name,
     this.missingPhotos = 0,
+    this.thumbnailIsStrip = false,
   });
 
   final String id;
@@ -203,6 +211,9 @@ class AlbumSummary {
   /// photos are gone (cleared site data, an evicted blob, a partial write).
   /// The album surfaces this instead of offering a reopen that would fail.
   final int missingPhotos;
+
+  /// Whether the stored thumbnail depicts the complete rendered photostrip.
+  final bool thumbnailIsStrip;
 
   bool get isDamaged => missingPhotos > 0;
 
@@ -237,6 +248,7 @@ String albumLayoutLabel(String layoutName) {
 AlbumRecord albumRecordFromSession(
   AlbumSession session, {
   Uint8List? thumbnail,
+  bool thumbnailIsStrip = false,
 }) {
   return AlbumRecord(
     id: session.id,
@@ -248,5 +260,6 @@ AlbumRecord albumRecordFromSession(
     ],
     thumbnail: thumbnail,
     name: session.name,
+    thumbnailIsStrip: thumbnailIsStrip,
   );
 }

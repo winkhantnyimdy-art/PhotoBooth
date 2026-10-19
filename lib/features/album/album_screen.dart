@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -85,6 +87,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
           _sessions = value;
           _loading = false;
         });
+        unawaited(_upgradeLegacyThumbnails(value));
       case AlbumFailure(:final String error):
         setState(() {
           _errorMessage = error;
@@ -93,6 +96,51 @@ class _AlbumScreenState extends State<AlbumScreen> {
     }
 
     await _loadUsage();
+  }
+
+  /// Re-renders legacy single-photo thumbnails into complete strip thumbnails
+  /// when the original photos are still available. Never fabricates data: a
+  /// session that cannot be loaded or rendered keeps its honest fallback.
+  Future<void> _upgradeLegacyThumbnails(List<AlbumSummary> summaries) async {
+    final PhotoStripRenderer renderer = widget.renderer ?? PhotoStripRenderer();
+    bool changed = false;
+    for (final AlbumSummary summary in summaries) {
+      if (summary.thumbnailIsStrip || summary.isDamaged) continue;
+      try {
+        final AlbumResult<AlbumSession> loaded =
+            await widget.albumService.loadSession(summary.id);
+        if (loaded is! AlbumSuccess<AlbumSession>) continue;
+        final AlbumSession session = loaded.value;
+        if (session.photoBytes.isEmpty) continue;
+
+        final List<XFile> photos = <XFile>[];
+        for (int i = 0; i < session.photoBytes.length; i++) {
+          photos.add(
+            await widget.photoFiles.materialize(
+              session.photoBytes[i],
+              '${session.id}_$i.jpg',
+            ),
+          );
+        }
+
+        final Uint8List strip = await renderer.render(
+          layout: session.layout,
+          photos: photos,
+          decorationState: session.decorationState,
+        );
+
+        final AlbumResult<void> saved = await widget.albumService.saveSession(
+          session.copyWith(thumbnailBytes: strip, thumbnailIsStrip: true),
+        );
+        if (saved is AlbumSuccess<void>) changed = true;
+      } on Object {
+        // Leave the honest fallback in place.
+      }
+    }
+
+    if (changed && mounted) {
+      await _loadSessions();
+    }
   }
 
   Future<void> _loadUsage() async {
@@ -536,7 +584,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
         // Taller cells on than the old 0.8: the media area now mirrors the
         // portrait camera frame the thumbnail was made from, so a photo
         // tile reads like a photo tile, not a squashed rectangle.
-        childAspectRatio: 0.58,
+        childAspectRatio: 0.72,
       ),
       itemCount: _sessions.length,
       itemBuilder: (BuildContext context, int index) {

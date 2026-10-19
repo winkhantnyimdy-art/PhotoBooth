@@ -186,7 +186,9 @@ void main() {
       // Editing a saved session, not starting a new one.
       expect(find.text('Edit Session'), findsOneWidget);
       // The original photos were materialised for the editor.
-      expect(photoFiles.materialisedNames, hasLength(4));
+      // The album upgrades legacy thumbnails on load (4 photos) before the
+      // editor re-materialises them when the card is opened (4 photos).
+      expect(photoFiles.materialisedNames, hasLength(8));
 
       // Sticker and caption came back.
       expect(find.bySemanticsLabel('Bunny sticker on the preview'), findsOneWidget);

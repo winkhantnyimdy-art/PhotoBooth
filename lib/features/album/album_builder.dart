@@ -35,7 +35,8 @@ Future<AlbumSession> buildAlbumSession({
   // the first shot keeps the album working for callers that only have the
   // source photos (and never breaks older save paths).
   Uint8List? thumbnail;
-  if (renderedStripBytes != null && renderedStripBytes.isNotEmpty) {
+  final bool isStrip = renderedStripBytes != null && renderedStripBytes.isNotEmpty;
+  if (isStrip) {
     thumbnail = await generateAlbumThumbnail(renderedStripBytes);
   }
   thumbnail ??= bytes.isEmpty
@@ -50,6 +51,7 @@ Future<AlbumSession> buildAlbumSession({
     decorationState: decorationState,
     thumbnailBytes: thumbnail ?? Uint8List(0),
     name: name,
+    thumbnailIsStrip: isStrip,
   );
 }
 

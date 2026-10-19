@@ -228,6 +228,7 @@ class StoreBackedAlbumService implements AlbumService {
           decorationState: decorationStateFromJson(record.decoration),
           thumbnailBytes: record.thumbnail ?? Uint8List(0),
           name: record.name,
+           thumbnailIsStrip: record.thumbnailIsStrip,
         ),
       );
     } on AlbumStorageError catch (error) {
@@ -255,6 +256,7 @@ class StoreBackedAlbumService implements AlbumService {
     final AlbumRecord record = albumRecordFromSession(
       session,
       thumbnail: session.thumbnailBytes.isEmpty ? null : session.thumbnailBytes,
+      thumbnailIsStrip: session.thumbnailIsStrip,
     );
 
     try {

@@ -120,8 +120,9 @@ class _ExportScreenState extends State<ExportScreen> {
       await _exportService.saveToGallery(image, _generateFileName());
       if (!mounted) return;
       setState(() => _gallerySaved = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+      final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+      messenger.showMaterialBanner(
+        MaterialBanner(
           content: Row(
             children: <Widget>[
               const Icon(
@@ -133,8 +134,18 @@ class _ExportScreenState extends State<ExportScreen> {
               Expanded(child: Text(_exportService.saveMessage)),
             ],
           ),
+          backgroundColor: AppColors.darkElevated,
+          actions: <Widget>[
+            TextButton(
+              onPressed: messenger.hideCurrentMaterialBanner,
+              child: const Text('Dismiss'),
+            ),
+          ],
         ),
       );
+      Future<void>.delayed(const Duration(seconds: 2), () {
+        if (mounted) messenger.hideCurrentMaterialBanner();
+      });
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
