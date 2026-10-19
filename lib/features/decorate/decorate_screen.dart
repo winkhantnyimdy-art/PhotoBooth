@@ -608,7 +608,15 @@ class _DecorateScreenState extends State<DecorateScreen> {
           onChanged: original ? null : _changeEffectIntensity,
         ),
         const SizedBox(height: S.sm),
-        _buildFilterShelf(),
+        if (_state.filter != PhotoEffect.original)
+           Align(
+             alignment: Alignment.centerRight,
+             child: TextButton(
+               onPressed: _resetEffectToOriginal,
+               child: const Text('Reset to Original'),
+             ),
+           ),
+         _buildFilterShelf(),
         // One hint line, not two. The panel is a fixed height and the
         // strength slider is a primary control: a second explanatory line
         // pushed it below the fold, so the disclosure is folded into the
@@ -1104,6 +1112,20 @@ class _DecorateScreenState extends State<DecorateScreen> {
     _undoRedo.record(_state);
     setState(() {
       _state = _state.copyWith(filter: effect);
+    });
+  }
+
+  void _resetEffectToOriginal() {
+    if (_state.filter == PhotoEffect.original &&
+        _state.filterIntensity == 1.0) {
+      return;
+    }
+    _undoRedo.record(_state);
+    setState(() {
+      _state = _state.copyWith(
+        filter: PhotoEffect.original,
+        filterIntensity: 1.0,
+      );
     });
   }
 
