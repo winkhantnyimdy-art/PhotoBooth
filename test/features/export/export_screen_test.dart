@@ -261,6 +261,46 @@ void main() {
       await drainSnackBars(tester);
     });
 
+    testWidgets('a completed save goes inert instead of writing a duplicate', (
+      tester,
+    ) async {
+      final FakeExportService service = FakeExportService();
+
+      await tester.pumpWidget(buildExport(service: service));
+      await pumpUntilRenderSettles(tester);
+
+      await tester.tap(find.text('Save to Photos'));
+      await tester.pump();
+
+      expect(find.text('Saved to Photos!'), findsOneWidget);
+      expect(service.saveCalls, 1);
+
+      await drainSnackBars(tester);
+
+      // The primary action reads as a result, not an invitation to save the
+      // same render a second time...
+      expect(find.text('Saved'), findsOneWidget);
+      final FilledButton savedButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Saved'),
+      );
+      expect(savedButton.onPressed, isNull);
+      expect(service.saveCalls, 1);
+
+      // ...and even a direct tap on it writes nothing.
+      await tester.tap(find.text('Saved'), warnIfMissed: false);
+      await tester.pump();
+      await drainSnackBars(tester);
+      expect(service.saveCalls, 1);
+
+      // Sharing stays available after a save.
+      expect(
+        tester.widget<OutlinedButton>(
+          find.widgetWithText(OutlinedButton, 'Share'),
+        ).onPressed,
+        isNotNull,
+      );
+    });
+
     testWidgets('shows friendly feedback when saving fails', (tester) async {
       final FakeExportService service = FakeExportService()..failSave = true;
 

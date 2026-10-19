@@ -18,9 +18,24 @@ import 'package:photo_booth/features/decorate/decoration_model.dart';
 import 'package:photo_booth/features/decorate/decorate_screen.dart';
 import 'package:photo_booth/features/decorate/frame_theme.dart';
 import 'package:photo_booth/features/export/export_screen.dart';
+import 'package:photo_booth/features/export/photo_strip_renderer.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
+import 'package:photo_booth/shared/strip_inspector.dart';
 
 import '../../support/fake_album.dart';
+
+/// Renders instantly with a fixed strip, keeping the inspection test free of
+/// real image decoding inside fake-async.
+class _FixedStripRenderer extends PhotoStripRenderer {
+  @override
+  Future<Uint8List> render({
+    required PhotoLayout layout,
+    required List<XFile> photos,
+    required DecorationState decorationState,
+  }) async {
+    return testPngBytes();
+  }
+}
 
 /// Boots the album screen with a real album wired through [AlbumScope].
 ///
@@ -29,12 +44,17 @@ import '../../support/fake_album.dart';
 Widget buildAlbumHost({
   required AlbumService album,
   required FakeAlbumPhotoFiles photos,
+  PhotoStripRenderer? renderer,
 }) {
   return AlbumScope(
     service: album,
     child: MaterialApp(
       theme: AppTheme.theme,
-      home: AlbumScreen(albumService: album, photoFiles: photos),
+      home: AlbumScreen(
+        albumService: album,
+        photoFiles: photos,
+        renderer: renderer,
+      ),
     ),
   );
 }
@@ -92,6 +112,46 @@ void main() {
 
       expect(find.byKey(const ValueKey('album-session-s1')), findsOneWidget);
       expect(find.text('4 photos · 4 CUT'), findsOneWidget);
+    });
+
+    testWidgets('Inspect opens the strip full screen and Edit is untouched', (
+      tester,
+    ) async {
+      await album.seed(buildTestSession(id: 's1', photoCount: 4));
+
+      await tester.pumpWidget(
+        buildAlbumHost(
+          album: album,
+          photos: photoFiles,
+          renderer: _FixedStripRenderer(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The inspect affordance is visible and labelled, not hidden behind a
+      // long-press-only interaction.
+      await tester.tap(
+        find.bySemanticsLabel('Inspect Session 2024-05-01 12:00 full screen'),
+      );
+      await _pumpUntil(tester, find.byType(StripInspector));
+
+      expect(find.byType(StripInspector), findsOneWidget);
+      expect(find.text('Preview'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Full-screen preview of Session 2024-05-01 12:00'),
+        findsOneWidget,
+      );
+
+      // Explicit Close returns to the album grid.
+      await tester.tap(find.bySemanticsLabel('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(StripInspector), findsNothing);
+
+      // The editing path through a plain card tap still works after the
+      // affordances landed on the card.
+      await tester.tap(find.byKey(const ValueKey('album-session-s1')));
+      await _pumpUntil(tester, find.byType(DecorateScreen));
+      expect(find.byType(DecorateScreen), findsOneWidget);
     });
 
     testWidgets('tapping a session opens the editor with the saved state '

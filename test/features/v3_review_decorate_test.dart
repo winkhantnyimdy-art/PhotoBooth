@@ -1,8 +1,10 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:photo_booth/app/app.dart';
@@ -13,6 +15,7 @@ import 'package:photo_booth/features/decorate/decorate_screen.dart';
 import 'package:photo_booth/features/home/layout_geometry.dart';
 import 'package:photo_booth/features/home/layout_model.dart';
 import 'package:photo_booth/features/review/review_screen.dart';
+import 'package:photo_booth/shared/strip_inspector.dart';
 
 /// A camera controller stub: only the members CameraScreen actually uses.
 class _FakeCameraController extends CameraController {
@@ -572,6 +575,105 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('filter strength reads as No effect on Original', (tester) async {
+      // Original does not grade the photo, so an active-looking "100%" would
+      // describe an effect the user did not pick.
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(
+          DecorateScreen(layout: PhotoLayout.grid4, photos: const <XFile>[]),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Filters'));
+      await tester.pumpAndSettle();
+
+      // Header readout and strength display both say "No effect".
+      expect(find.text('No effect'), findsNWidgets(2));
+
+      // And the strength control is an inert control, not an active 100%.
+      final SemanticsNode strength =
+          tester.getSemantics(find.bySemanticsLabel('Effect strength'));
+      expect(
+        strength.flagsCollection.isEnabled,
+        ui.Tristate.isFalse,
+        reason: 'Original leaves nothing to grade, so the slider is inert',
+      );
+
+      // Picking a real effect brings the percentage readouts back...
+      await tester.tap(find.bySemanticsLabel('Warm effect'));
+      await tester.pumpAndSettle();
+      expect(find.text('No effect'), findsNothing);
+      expect(find.text('100%'), findsWidgets);
+
+      // ...and arming the slider again.
+      final SemanticsNode armed =
+          tester.getSemantics(find.bySemanticsLabel('Effect strength'));
+      expect(armed.flagsCollection.isEnabled, ui.Tristate.isTrue);
+    });
+
+    testWidgets('Inspect opens the same composition full screen', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(
+          DecorateScreen(layout: PhotoLayout.korean4, photos: const <XFile>[]),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.bySemanticsLabel('Inspect the photostrip full screen'));
+      await tester.pumpAndSettle();
+
+      // The inspection route renders the strip with no editing chrome around
+      // it, and returns to the editor intact.
+      expect(find.byType(StripInspector), findsOneWidget);
+      expect(find.bySemanticsLabel('Full-screen preview of your decorated photo strip'), findsOneWidget);
+      expect(find.text('Filters'), findsNothing);
+
+      await tester.tap(find.bySemanticsLabel('Close'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(StripInspector), findsNothing);
+      expect(find.text('Filters'), findsOneWidget);
+    });
+
+    testWidgets('the effect shelf advertises more effects while any lie beyond the right edge', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(
+          DecorateScreen(layout: PhotoLayout.grid4, photos: const <XFile>[]),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Filters'));
+      await tester.pumpAndSettle();
+
+      // Fifteen effects cannot fit; the chevron must show so the horizontal
+      // scrolling is discoverable.
+      expect(
+        find.byIcon(Icons.chevron_right_rounded),
+        findsOneWidget,
+      );
+
+      // Scrolling to the far right end retracts the affordance.
+      await tester.drag(find.bySemanticsLabel('Original effect'), const Offset(-1200, 0));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
     });
   });
 

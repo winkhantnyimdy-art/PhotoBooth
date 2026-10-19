@@ -18,6 +18,10 @@ String formatAlbumBytes(int bytes) {
 }
 
 /// Longest edge of an album-grid thumbnail, in pixels.
+///
+/// Deliberately small: the inspector re-renders the strip from the originals
+/// when the user wants to see it large, so the grid does not carry (and every
+/// record does not store) multi-hundred-KB previews for a ~180 dp tile.
 const int kAlbumThumbnailSize = 240;
 
 /// Renders a small preview of [photoBytes] for the album grid.

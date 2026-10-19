@@ -2,16 +2,17 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/art/checkerboard.dart';
-import '../../core/art/retro_sticker.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
+import '../../shared/minimal_dark.dart';
 import '../../shared/pressable.dart';
-import '../decorate/decoration_model.dart';
+import '../../shared/strip_inspector.dart';
 import '../decorate/decorate_screen.dart';
+import '../export/photo_strip_renderer.dart';
+import '../home/layout_geometry.dart';
 import 'album_record.dart';
 import 'album_service.dart';
 import 'album_session.dart';
@@ -27,10 +28,15 @@ class AlbumScreen extends StatefulWidget {
     super.key,
     required this.albumService,
     required this.photoFiles,
+    this.renderer,
   });
 
   final AlbumService albumService;
   final AlbumPhotoFiles photoFiles;
+
+  /// Strip renderer for the full-screen inspection. Defaults to the real
+  /// renderer; tests inject a fake so inspection does not decode images.
+  final PhotoStripRenderer? renderer;
 
   @override
   State<AlbumScreen> createState() => _AlbumScreenState();
@@ -42,6 +48,10 @@ class _AlbumScreenState extends State<AlbumScreen> {
   String? _errorMessage;
   int? _usageBytes;
   String? _openingSessionId;
+
+  /// Session whose strip is being prepared for full-screen inspection,
+  /// shown as a busy marker on its card.
+  String? _inspectingSessionId;
 
   @override
   void initState() {
@@ -183,6 +193,71 @@ class _AlbumScreenState extends State<AlbumScreen> {
     );
   }
 
+  /// Full-screen inspection of a session's photostrip.
+  ///
+  /// The strip is re-rendered from the stored originals through the same
+  /// renderer the export screen uses, so what the user inspects is exactly
+  /// what they would get if they reopened and exported the session - not a
+  /// soft upscale of the 240 px grid thumbnail.
+  Future<void> _inspectSession(AlbumSummary session) async {
+    // One inspection at a time; the card shows the busy state.
+    if (_inspectingSessionId != null) return;
+    setState(() => _inspectingSessionId = session.id);
+
+    final AlbumResult<AlbumSession> loaded =
+        await widget.albumService.loadSession(session.id);
+    if (!mounted) return;
+
+    if (loaded case AlbumFailure(:final String error)) {
+      setState(() => _inspectingSessionId = null);
+      _showSnackBar(error, isError: true);
+      return;
+    }
+    final AlbumSession data = (loaded as AlbumSuccess<AlbumSession>).value;
+
+    // Materialise the originals into temp files so the renderer can read them
+    // through the same photo source the editor and exporter use.
+    try {
+      final List<XFile> photos = <XFile>[];
+      for (int i = 0; i < data.photoBytes.length; i++) {
+        photos.add(
+          await widget.photoFiles.materialize(
+            data.photoBytes[i],
+            '${data.id}_$i.jpg',
+          ),
+        );
+      }
+
+      final Uint8List strip = await (widget.renderer ?? PhotoStripRenderer())
+          .render(
+        layout: data.layout,
+        photos: photos,
+        decorationState: data.decorationState,
+      );
+      if (!mounted) return;
+
+      await showStripInspection(
+        context,
+        child: Image.memory(
+          strip,
+          fit: BoxFit.contain,
+          gaplessPlayback: true,
+        ),
+        aspectRatio: PhotoStripGeometry.aspectRatio(data.layout),
+        semanticLabel: 'Full-screen preview of ${session.displayName}',
+        title: 'Preview',
+      );
+    } on Object {
+      if (mounted) {
+        _showSnackBar('Could not render that strip.', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _inspectingSessionId = null);
+      }
+    }
+  }
+
   Future<bool?> _showDeleteDialog(BuildContext context, String name) {
     return showDialog<bool>(
       context: context,
@@ -264,7 +339,6 @@ class _AlbumScreenState extends State<AlbumScreen> {
                           : _buildSessionGrid(),
             ),
             if (_sessions.isNotEmpty) _buildStorageFooter(),
-            const CheckerboardPattern(height: 20),
           ],
         ),
       ),
@@ -276,19 +350,23 @@ class _AlbumScreenState extends State<AlbumScreen> {
       padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.sm),
       child: Row(
         children: <Widget>[
-          _CircleButton(
+          MinimalIconButton(
             icon: Icons.arrow_back_rounded,
+            tooltip: 'Back',
             onPressed: () => Navigator.of(context).maybePop(),
           ),
           Expanded(
             child: Center(
-              child: Text(
-                'Album',
-                style: AppText.title.copyWith(color: AppColors.onDark),
+              child: Semantics(
+                header: true,
+                child: Text(
+                  'Album',
+                  style: AppText.title.copyWith(color: AppColors.onDark),
+                ),
               ),
             ),
           ),
-          _CircleButton(
+          MinimalIconButton(
             icon: Icons.delete_sweep_rounded,
             tooltip: 'Clear all sessions',
             onPressed: _sessions.isEmpty ? null : _clearAll,
@@ -448,9 +526,12 @@ class _AlbumScreenState extends State<AlbumScreen> {
           padding: const EdgeInsets.fromLTRB(S.md, S.md, S.md, S.md),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
-            mainAxisSpacing: S.md,
-            crossAxisSpacing: S.md,
-            childAspectRatio: 0.8,
+            mainAxisSpacing: S.sm + S.xs,
+            crossAxisSpacing: S.sm + S.xs,
+            // Taller cells on than the old 0.8: the media area now mirrors the
+            // portrait camera frame the thumbnail was made from, so a photo
+            // tile reads like a photo tile, not a squashed rectangle.
+            childAspectRatio: 0.58,
           ),
           itemCount: _sessions.length,
           itemBuilder: (BuildContext context, int index) {
@@ -458,8 +539,11 @@ class _AlbumScreenState extends State<AlbumScreen> {
             return _SessionCard(
               session: session,
               busy: _openingSessionId == session.id,
+              inspecting: _inspectingSessionId == session.id,
               onTap: () => _reopenSession(session),
               onLongPress: () => _deleteSession(session),
+              onInspect: session.isDamaged ? null : () => _inspectSession(session),
+              onDelete: () => _deleteSession(session),
             );
           },
         ),
@@ -470,19 +554,26 @@ class _SessionCard extends StatelessWidget {
   const _SessionCard({
     required this.session,
     required this.busy,
+    required this.inspecting,
     required this.onTap,
     required this.onLongPress,
+    required this.onInspect,
+    required this.onDelete,
   });
 
   final AlbumSummary session;
   final bool busy;
+  final bool inspecting;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final VoidCallback? onInspect;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final bool damaged = session.isDamaged;
     return Semantics(
+      container: true,
       button: true,
       label: damaged
           ? '${session.displayName}, photos missing, cannot reopen'
@@ -520,15 +611,27 @@ class _SessionCard extends StatelessWidget {
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(12),
                       ),
-                      child: session.thumbnail != null
-                          ? Image.memory(
-                              session.thumbnail!,
-                              fit: BoxFit.cover,
-                              gaplessPlayback: true,
-                            )
-                          : const ColoredBox(color: AppColors.darkElevated),
-                    ),
-                    if (busy)
+                      // Contain rather than cover: the stored thumbnail keeps
+                      // the camera frame's own aspect ratio, and the tile
+                      // must show the photo uncropped and undistorted. For
+                      // the common portrait shot the media box is close
+                      // enough that the letterbox is a hairline.
+                      child: Center(
+                        child: AspectRatio(
+                          aspectRatio: 0.75,
+                          child: session.thumbnail != null
+                              ? Image.memory(
+                                  session.thumbnail!,
+                                  fit: BoxFit.contain,
+                                  gaplessPlayback: true,
+                                )
+                              : const ColoredBox(
+                                  color: AppColors.darkElevated,
+                                ),
+                        ),
+                      ),
+                      ),
+                    if (busy || inspecting)
                       const ColoredBox(
                         color: Color(0x66000000),
                         child: Center(
@@ -542,11 +645,20 @@ class _SessionCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    if (!damaged && !busy)
-                      const Positioned(
+                    if (onInspect != null && !busy && !inspecting)
+                      Positioned(
                         right: 6,
                         top: 6,
-                        child: RetroSticker(type: StickerType.star, size: 20),
+                        child: Semantics(
+                          button: true,
+                          label:
+                              'Inspect ${session.displayName} full screen',
+                          child: _CardActionButton(
+                            icon: Icons.zoom_out_map_rounded,
+                            tooltip: 'Inspect',
+                            onPressed: onInspect!,
+                          ),
+                        ),
                       ),
                     if (damaged)
                       const Center(
@@ -561,28 +673,49 @@ class _SessionCard extends StatelessWidget {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(S.sm, S.xs, S.sm, S.sm),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: <Widget>[
-                    Text(
-                      session.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.label.copyWith(color: AppColors.onDark),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            session.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.label
+                                .copyWith(color: AppColors.onDark),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            damaged
+                                ? 'Photos missing'
+                                : '${session.photoCount} photo'
+                                    '${session.photoCount == 1 ? '' : 's'}'
+                                    ' · ${albumLayoutLabel(session.layoutName)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.caption.copyWith(
+                              color: damaged
+                                  ? AppColors.danger
+                                  : AppColors.darkMuted,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      damaged
-                          ? 'Photos missing'
-                          : '${session.photoCount} photo'
-                              '${session.photoCount == 1 ? '' : 's'}'
-                              ' · ${albumLayoutLabel(session.layoutName)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.caption.copyWith(
-                        color: damaged ? AppColors.danger : AppColors.darkMuted,
-                        fontSize: 10,
+                    // The long-press delete moves here where it is visible.
+                    // Long-press keeps working for people who learned it.
+                    Semantics(
+                      button: true,
+                      label: 'Delete ${session.displayName}',
+                      child: _CardActionButton(
+                        icon: Icons.delete_outline_rounded,
+                        tooltip: 'Delete',
+                        onPressed: onDelete,
                       ),
                     ),
                   ],
@@ -596,32 +729,42 @@ class _SessionCard extends StatelessWidget {
   }
 }
 
-class _CircleButton extends StatelessWidget {
-  const _CircleButton({required this.icon, this.onPressed, this.tooltip});
+/// Small dark action button used inside session cards.
+///
+/// The 48 dp square is the touch targetSdk floor; the visible circle is kept
+/// small so the thumbnail stays the card's focus.
+class _CardActionButton extends StatelessWidget {
+  const _CardActionButton({
+    required this.icon,
+    required this.onPressed,
+    this.tooltip,
+  });
 
   final IconData icon;
-  final VoidCallback? onPressed;
+  final VoidCallback onPressed;
   final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
-    final bool enabled = onPressed != null;
-    final Widget button = Material(
-      color: enabled ? AppColors.darkElevated : AppColors.darkSurface,
-      shape: CircleBorder(side: BorderSide(color: AppColors.line)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(
-            icon,
-            size: 22,
-            color: enabled ? AppColors.onDark : AppColors.darkMuted,
-          ),
+    final Widget button = Container(
+      decoration: const BoxDecoration(
+        color: AppColors.darkSurface,
+        shape: BoxShape.circle,
+      ),
+      width: S.touchTarget,
+      height: S.touchTarget,
+      child: IconButton(
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(
+          width: S.touchTarget,
+          height: S.touchTarget,
         ),
+        icon: Icon(icon, size: 18, color: AppColors.onDark),
+        onPressed: onPressed,
       ),
     );
     return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }
+

@@ -17,12 +17,65 @@ import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/pressable.dart';
+import '../../shared/strip_inspector.dart';
 import '../album/album_scope.dart';
 import '../export/export_screen.dart';
 import '../home/layout_geometry.dart';
 import '../home/layout_model.dart';
 import 'decoration_model.dart';
 import 'frame_theme.dart';
+
+/// Presses the extension's request through the first live editor state, so
+/// automated verification can record the genuine zoomed editing view. The
+/// extension itself is registered in debug builds only - see `main.dart`.
+void scheduleEditorZoomForCurrentEditor(double? factor) {
+  if (factor == null) return;
+  final Element? root = WidgetsBinding.instance.rootElement;
+  StatefulElement? editor;
+  void visit(Element el) {
+    if (editor != null) return;
+    if (el is StatefulElement && el.widget is DecorateScreen) {
+      editor = el;
+      return;
+    }
+    el.visitChildren(visit);
+  }
+
+  if (root != null) visit(root);
+  final StatefulElement? editorElement = editor;
+  if (editorElement == null) return;
+  final _DecorateScreenState state = editorElement.state as _DecorateScreenState;
+
+  // Anchor the scale on the viewport centre, so the strip grows in place the
+  // way a pinch at the middle of the photo does. An uncompensated diagonal
+  // matrix scales around the child's top-left corner and slides the strip
+  // half out of view.
+  Element? viewer;
+  void findViewer(Element el) {
+    if (viewer != null) return;
+    if (el.widget is InteractiveViewer) {
+      viewer = el;
+      return;
+    }
+    el.visitChildren(findViewer);
+  }
+
+  findViewer(editorElement);
+  final Element? viewerElement = viewer;
+  if (viewerElement == null) {
+    state._zoom.value = Matrix4.diagonal3Values(factor, factor, 1.0);
+    return;
+  }
+  // The transform node reports the live viewport size.
+  final RenderBox box = viewerElement.renderObject! as RenderBox;
+  final double cx = box.size.width / 2;
+  final double cy = box.size.height / 2;
+  final Matrix4 anchored = Matrix4.identity()
+    ..translateByDouble(cx, cy, 0, 1)
+    ..scaleByDouble(factor, factor, 1, 1)
+    ..translateByDouble(-cx, -cy, 0, 1);
+  state._zoom.value = anchored;
+}
 
 /// The Decorate editor: a dark workspace with the live composition on top and a
 /// compact five-tab tool tray below (Filters, Frames, Stickers, Text, Adjust).
@@ -114,6 +167,13 @@ class _DecorateScreenState extends State<DecorateScreen> {
   final TransformationController _zoom = TransformationController();
   double _zoomScale = 1;
 
+  /// Whether the Filters shelf still has effects off-screen to the right.
+  ///
+  /// Drives the edge fade + chevron that make the horizontal shelf
+  /// discoverable; without an affordance, a full 15-chip shelf reads as a
+  /// fixed row that ends at 35mm.
+  bool _canScrollShelfRight = false;
+
   @override
   void initState() {
     super.initState();
@@ -129,6 +189,10 @@ class _DecorateScreenState extends State<DecorateScreen> {
         );
     _layout = _state.layout;
     _zoom.addListener(_onZoomChanged);
+    _effectScroll.addListener(_onShelfScrolled);
+    // The shelf controller only knows its scroll extents once the shelf has
+    // been laid out for the first time.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onShelfScrolled());
   }
 
   /// Panning is only enabled once the strip is actually zoomed in, so a
@@ -141,6 +205,19 @@ class _DecorateScreenState extends State<DecorateScreen> {
     if (!crossed && (next - _zoomScale).abs() < 0.001) return;
     if (!mounted) return;
     setState(() => _zoomScale = next);
+  }
+
+  void _onShelfScrolled() {
+    bool canScroll() {
+      if (!_effectScroll.hasClients) return false;
+      final ScrollPosition position = _effectScroll.position;
+      return position.maxScrollExtent - position.pixels > 1;
+    }
+
+    final bool next = canScroll();
+    if (next == _canScrollShelfRight) return;
+    if (!mounted) return;
+    setState(() => _canScrollShelfRight = next);
   }
 
   void _resetZoom() {
@@ -164,6 +241,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
 
   @override
   void dispose() {
+    _effectScroll.removeListener(_onShelfScrolled);
     _effectScroll.dispose();
     _zoom.removeListener(_onZoomChanged);
     _zoom.dispose();
@@ -246,13 +324,56 @@ class _DecorateScreenState extends State<DecorateScreen> {
             icon: Icons.refresh_rounded,
             onPressed: _resetDecoration,
           ),
+          Semantics(
+            button: true,
+            label: 'Inspect the photostrip full screen',
+            child: _DarkCircleButton(
+              icon: Icons.zoom_out_map_rounded,
+              onPressed: _openInspection,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildCompositionPreview() {
+  /// The live composition, sized to the strip's aspect.
+  ///
+  /// Extracted so the editor preview and the full-screen inspector render the
+  /// exact same widget tree - the inspection cannot drift from the preview.
+  Widget _buildComposition() {
     final double stripAspect = PhotoStripGeometry.aspectRatio(_layout);
+    return AspectRatio(
+      aspectRatio: stripAspect,
+      child: _Composition(
+        layout: _layout,
+        photos: widget.photos,
+        // A comparison hold swaps only the effect, never the stickers,
+        // text, frames or adjustments underneath it.
+        state: _comparing
+            ? _state.copyWith(filter: PhotoEffect.original)
+            : _state,
+        selectedSticker: _selectedSticker,
+        selectedText: _selectedText,
+        onStickerTap: (int i) => setState(() {
+          _selectedSticker = _selectedSticker == i ? null : i;
+          _selectedText = null;
+        }),
+        onStickerDrag: _moveSticker,
+        onTextTap: (int i) => setState(() {
+          _selectedText = _selectedText == i ? null : i;
+          _selectedSticker = null;
+          if (_selectedText != null) {
+            _textController.text = _state.texts[i].text;
+            _textColor = _state.texts[i].color;
+          }
+        }),
+        onTextDrag: _moveText,
+      ),
+    );
+  }
+
+  Widget _buildCompositionPreview() {
     // The composition is sized purely from the viewport: AspectRatio fits the
     // exported strip inside whatever space is left after the header and the
     // bounded toolbar, so a tall 4 CUT ribbon grows as the toolbar collapses
@@ -269,41 +390,12 @@ class _DecorateScreenState extends State<DecorateScreen> {
       minScale: 1.0,
       maxScale: 6.0,
       boundaryMargin: const EdgeInsets.all(160),
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: stripAspect,
-          child: _Composition(
-            layout: _layout,
-            photos: widget.photos,
-            // A comparison hold swaps only the effect, never the stickers,
-            // text, frames or adjustments underneath it.
-            state: _comparing
-                ? _state.copyWith(filter: PhotoEffect.original)
-                : _state,
-            selectedSticker: _selectedSticker,
-            selectedText: _selectedText,
-            onStickerTap: (int i) => setState(() {
-              _selectedSticker = _selectedSticker == i ? null : i;
-              _selectedText = null;
-            }),
-            onStickerDrag: _moveSticker,
-            onTextTap: (int i) => setState(() {
-              _selectedText = _selectedText == i ? null : i;
-              _selectedSticker = null;
-              if (_selectedText != null) {
-                _textController.text = _state.texts[i].text;
-                _textColor = _state.texts[i].color;
-              }
-            }),
-            onTextDrag: _moveText,
-          ),
-        ),
-      ),
+      child: Center(child: _buildComposition()),
     );
   }
 
-  /// Slim bar that returns the preview to fit scale. Only present while the
-  /// strip is zoomed in.
+  /// Slim bar that returns the preview to fit scale. Present only while the
+  /// strip is zoomed, so at default size every pixel belongs to the photo.
   Widget _buildFitBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(S.md, 0, S.md, S.sm),
@@ -326,19 +418,26 @@ class _DecorateScreenState extends State<DecorateScreen> {
           Semantics(
             button: true,
             label: 'Reset preview zoom',
-            child: TextButton.icon(
+            child: _PreviewUtilityButton(
+              icon: Icons.fit_screen_rounded,
+              label: 'Fit',
               onPressed: _resetZoom,
-              icon: const Icon(Icons.fit_screen_rounded, size: 16),
-              label: const Text('Fit'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.onDark,
-                backgroundColor: AppColors.darkElevated,
-                textStyle: AppText.caption,
-              ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// Full-screen inspection at a larger size, sharing the gesture set with the
+  /// album's inspection of saved sessions.
+  void _openInspection() {
+    showStripInspection(
+      context,
+      child: _buildComposition(),
+      aspectRatio: PhotoStripGeometry.aspectRatio(_layout),
+      semanticLabel: 'Full-screen preview of your decorated photo strip',
+      title: 'Decorate',
     );
   }
 
@@ -478,12 +577,15 @@ class _DecorateScreenState extends State<DecorateScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildFiltersTab() {
+    final bool original = _state.filter == PhotoEffect.original;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         _SectionHeader(
           title: 'Filters',
-          trailing: '${(_state.filterIntensity * 100).round()}%',
+          // Original does not grade the photo, so no strength figure applies;
+          // "100%" there implied an effect the user did not pick.
+          trailing: original ? 'No effect' : '${(_state.filterIntensity * 100).round()}%',
         ),
         const SizedBox(height: S.sm),
         // The strength control sits directly under the section header, not
@@ -499,42 +601,14 @@ class _DecorateScreenState extends State<DecorateScreen> {
           value: _state.filterIntensity,
           min: 0,
           max: 1,
-          display: '${(_state.filterIntensity * 100).round()}%',
+          display: original ? 'No effect' : '${(_state.filterIntensity * 100).round()}%',
           // Disabled on Original, because there is nothing there to grade.
           // Keeping the control visible but inert is the clearest signal that
           // picking an effect is what makes strength meaningful.
-          onChanged: _state.filter == PhotoEffect.original
-              ? null
-              : _changeEffectIntensity,
+          onChanged: original ? null : _changeEffectIntensity,
         ),
         const SizedBox(height: S.sm),
-        SizedBox(
-          height: 104,
-          child: SingleChildScrollView(
-            controller: _effectScroll,
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: S.md),
-            child: Row(
-              children: <Widget>[
-                for (final PhotoEffect effect in PhotoEffect.values)
-                  Padding(
-                    padding: const EdgeInsets.only(right: S.sm),
-                    child: _FilterThumb(
-                      effect: effect,
-                      sample: _photos().isEmpty ? null : _photos().first,
-                      selected: _state.filter == effect,
-                      // Holding a thumbnail compares against the untouched
-                      // original without committing a change, which is the
-                      // fastest way to judge a subtle grade.
-                      onCompareStart: () => setState(() => _comparing = true),
-                      onCompareEnd: () => setState(() => _comparing = false),
-                      onTap: () => _changeEffect(effect),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
+        _buildFilterShelf(),
         // One hint line, not two. The panel is a fixed height and the
         // strength slider is a primary control: a second explanatory line
         // pushed it below the fold, so the disclosure is folded into the
@@ -555,6 +629,81 @@ class _DecorateScreenState extends State<DecorateScreen> {
   }
 
   List<XFile> _photos() => widget.photos;
+
+  /// The effect shelf with a scroll affordance.
+  ///
+  /// Fifteen effects cannot fit on any phone width, so the shelf scrolls.
+  /// A faded right edge plus a chevron, shown only while there is more content
+  /// off-screen, makes that discoverable instead of relying on the user to try
+  /// dragging. The overlay ignores pointers and semantics: it is decoration,
+  /// and the chips underneath remain the targets.
+  Widget _buildFilterShelf() {
+    return SizedBox(
+      height: 104,
+      child: Stack(
+        children: <Widget>[
+          Positioned.fill(
+            child: SingleChildScrollView(
+              controller: _effectScroll,
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: S.md),
+              child: Row(
+                children: <Widget>[
+                  for (final PhotoEffect effect in PhotoEffect.values)
+                    Padding(
+                      padding: const EdgeInsets.only(right: S.sm),
+                      child: _FilterThumb(
+                        effect: effect,
+                        sample: _photos().isEmpty ? null : _photos().first,
+                        selected: _state.filter == effect,
+                        // Holding a thumbnail compares against the untouched
+                        // original without committing a change, which is the
+                        // fastest way to judge a subtle grade.
+                        onCompareStart: () => setState(() => _comparing = true),
+                        onCompareEnd: () => setState(() => _comparing = false),
+                        onTap: () => _changeEffect(effect),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (_canScrollShelfRight)
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 44,
+              child: ExcludeSemantics(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: <Color>[
+                          Color(0x001C1C20),
+                          AppColors.darkSurface,
+                        ],
+                        stops: <double>[0, 0.75],
+                      ),
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        size: 20,
+                        color: AppColors.onDark,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Frames
@@ -1919,6 +2068,41 @@ class _Hint extends StatelessWidget {
       child: Text(
         text,
         style: AppText.caption.copyWith(color: AppColors.darkMuted),
+      ),
+    );
+  }
+}
+
+/// Small dark capsule action used under the preview (Fit / Inspect).
+///
+/// A [TextButton] keeps the compact footprint; the 48 dp [Semantics]-friendly
+/// touch floor comes from the button's own minimum size.
+class _PreviewUtilityButton extends StatelessWidget {
+  const _PreviewUtilityButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16, color: AppColors.onDark),
+      label: Text(
+        label,
+        style: AppText.caption.copyWith(color: AppColors.onDark),
+      ),
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.onDark,
+        backgroundColor: AppColors.darkElevated,
+        minimumSize: const Size(48, 48),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
       ),
     );
   }

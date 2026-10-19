@@ -164,8 +164,14 @@ void main() {
       expect(find.textContaining('Save or share it'), findsOneWidget);
     });
 
-    testWidgets('Export drops the subtitle on a short screen', (tester) async {
-      // Short screens prioritise the strip and the actions over the subtitle.
+    testWidgets('Export keeps a usable strip and the subtitle on a short screen', (
+      tester,
+    ) async {
+      // Checkpoint 4 redesigned this screen around a flexed preview: instead
+      // of dropping the subtitle to protect a scrolled, height-capped preview,
+      // the strip now absorbs the shortage and the caption is always shown.
+      // The intent the old assertion protected is preserved - on short
+      // surfaces the strip stays visible and nothing claims a save yet.
       _useSurface(tester, _small);
       await tester.pumpWidget(
         _app(
@@ -181,9 +187,16 @@ void main() {
       await _settleRender(tester);
 
       expect(find.text('Ready!'), findsOneWidget);
-      expect(find.textContaining('Save or share it'), findsNothing);
+      expect(find.textContaining('Save or share it'), findsOneWidget);
       // The copy must never claim it is saved before the user saves it.
       expect(find.textContaining('Saved as'), findsNothing);
+
+      // The flexed preview must still show a usable share of the strip on a
+      // 320x480 surface rather than collapsing to nothing.
+      final Rect preview = tester.getRect(
+        find.bySemanticsLabel('Preview of your finished photo strip'),
+      );
+      expect(preview.height, greaterThan(100));
     });
   });
 

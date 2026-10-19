@@ -3,14 +3,13 @@ import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/art/checkerboard.dart';
-import '../../core/art/retro_sticker.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_shadows.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
+import '../../shared/minimal_dark.dart';
 import '../../shared/pressable.dart';
 import '../album/album_builder.dart';
 import '../album/album_service.dart';
@@ -63,6 +62,11 @@ class _ExportScreenState extends State<ExportScreen> {
   String? _albumError;
   String? _errorMessage;
 
+  /// Whether this exact render has already been written to the device
+  /// gallery. The Save action goes inert once it has, because a second tap
+  /// would write a byte-identical duplicate; [Share] stays available.
+  bool _gallerySaved = false;
+
   @override
   void initState() {
     super.initState();
@@ -107,12 +111,15 @@ class _ExportScreenState extends State<ExportScreen> {
 
   Future<void> _handleSave() async {
     final Uint8List? image = _renderedImage;
-    if (image == null || _isSaving || _isSharing) return;
+    // Inert once saved: a second write of the same render is a duplicate
+    // the user did not ask for.
+    if (image == null || _isSaving || _isSharing || _gallerySaved) return;
 
     setState(() => _isSaving = true);
     try {
       await _exportService.saveToGallery(image, _generateFileName());
       if (!mounted) return;
+      setState(() => _gallerySaved = true);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -331,155 +338,110 @@ class _ExportScreenState extends State<ExportScreen> {
   Widget _buildReady() {
     final double aspect = PhotoStripGeometry.aspectRatio(widget.layout);
 
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final bool compact = constraints.maxHeight < 520;
-        return Column(
-          children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.xs),
-              child: Row(
-                children: <Widget>[
-                  _CircleButton(
-                    icon: Icons.close_rounded,
-                    onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Text('Ready!', style: AppText.title),
-                    ),
-                  ),
-                  _CircleButton(
-                    icon: Icons.home_rounded,
-                    onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-                  ),
-                ],
+    return Column(
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.xs),
+          child: Row(
+            children: <Widget>[
+              MinimalIconButton(
+                icon: Icons.close_rounded,
+                tooltip: 'Close and discard',
+                onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
               ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: S.lg),
-                child: Column(
-                  children: <Widget>[
-                    if (!compact) ...<Widget>[
-                      Text(
-                        'Your photo is ready!',
-                        textAlign: TextAlign.center,
-                        style: AppText.display.copyWith(fontSize: 24),
-                      ),
-                      const SizedBox(height: S.xs),
-                      Text(
-                        'Save or share it ✨',
-                        textAlign: TextAlign.center,
-                        style: AppText.body,
-                      ),
-                      const SizedBox(height: S.md),
-                    ],
-                    // Always scaled to fit the space available, so a tall strip (the Korean
-                    // 4-cut is several times taller than it is wide) is shown
-                    // whole rather than cropped. The user must be able to see
-                    // what they are about to save.
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 460),
-                      child: FittedBox(
-                        fit: BoxFit.contain,
-                        child: SizedBox(
-                          width: 320,
-                          height: 320 / aspect,
-                          child: _KeepsakePreview(
-                            bytes: _renderedImage!,
-                            aspectRatio: aspect,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: S.md),
-                  ],
+              Expanded(
+                child: Center(
+                  child: Semantics(
+                    header: true,
+                    child: Text('Ready!', style: AppText.title),
+                  ),
                 ),
               ),
+              MinimalIconButton(
+                icon: Icons.home_rounded,
+                tooltip: 'Back to Home',
+                onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+              ),
+            ],
+          ),
+        ),
+        // The strip is the completion screen's whole point, so it claims every
+        // pixel between the header and the actions instead of living inside a
+        // fixed-height box. AspectRatio keeps it whole and centred: a tall
+        // 4 CUT ribbon scales to the available height, a wide strip to the
+        // available width - never cropped, never distorted.
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(S.lg, 0, S.lg, S.sm),
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: aspect,
+                child: _KeepsakePreview(bytes: _renderedImage!),
+              ),
             ),
-            _ActionBar(
-              isSaving: _isSaving,
-              isSharing: _isSharing,
-              saveLabel: _exportService.saveLabel,
-              saveHint: _exportService.saveHint,
-              onSave: _handleSave,
-              onShare: _handleShare,
-              albumAvailable: widget.albumService != null,
-              isSavingToAlbum: _isSavingToAlbum,
-              savedToAlbum: _savedToAlbum,
-              albumError: _albumError,
-              isEditingAlbumSession: widget.albumSessionId != null,
-              onSaveToAlbum: _handleSaveToAlbum,
-              onMakeAnother: () {
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
-            ),
-            const CheckerboardPattern(height: 20),
-          ],
-        );
-      },
+          ),
+        ),
+        Text(
+          'Save or share it ✨',
+          textAlign: TextAlign.center,
+          style: AppText.body,
+        ),
+        _ActionBar(
+          isSaving: _isSaving,
+          isSharing: _isSharing,
+          saveLabel: _exportService.saveLabel,
+          saveHint: _exportService.saveHint,
+          savedToGallery: _gallerySaved,
+          onSave: _handleSave,
+          onShare: _handleShare,
+          albumAvailable: widget.albumService != null,
+          isSavingToAlbum: _isSavingToAlbum,
+          savedToAlbum: _savedToAlbum,
+          albumError: _albumError,
+          isEditingAlbumSession: widget.albumSessionId != null,
+          onSaveToAlbum: _handleSaveToAlbum,
+          onMakeAnother: () {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          },
+        ),
+      ],
     );
   }
 }
 
 class _KeepsakePreview extends StatelessWidget {
-  const _KeepsakePreview({required this.bytes, required this.aspectRatio});
+  const _KeepsakePreview({required this.bytes});
 
   final Uint8List bytes;
-  final double aspectRatio;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       label: 'Preview of your finished photo strip',
       image: true,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: <Widget>[
-          Positioned(
-            left: -8,
-            top: -4,
-            child: RetroSticker(type: StickerType.star, size: 24),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0.94, end: 1),
+        duration: AppMotion.of(context, AppMotion.slow),
+        curve: AppMotion.curve,
+        builder: (BuildContext context, double scale, Widget? child) {
+          return Transform.scale(scale: scale, child: child);
+        },
+        // A thin silver border and a soft shadow read as a finished print
+        // without the retro sticker confetti, which fought the Minimal Dark
+        // direction on the one screen where the work itself is the star.
+        // The owner of the aspect box is the caller, so this fills whatever
+        // box it is given rather than imposing its own ratio.
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: R.all(R.xs + 2),
+            border: Border.all(color: AppColors.darkLine),
+            boxShadow: AppShadows.lifted,
           ),
-          Positioned(
-            right: -8,
-            top: 20,
-            child: RetroSticker(type: StickerType.heart, size: 20),
+          child: ClipRRect(
+            borderRadius: R.all(R.xs),
+            child: Image.memory(bytes, fit: BoxFit.contain),
           ),
-          Positioned(
-            right: -4,
-            bottom: 16,
-            child: RetroSticker(type: StickerType.sparkle, size: 18),
-          ),
-          // AspectRatio inside a bounded box: the strip is always shown whole,
-          // scaled down rather than cropped, so the user sees exactly the PNG
-          // they are about to save.
-          AspectRatio(
-            aspectRatio: aspectRatio,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 0.94, end: 1),
-              duration: AppMotion.of(context, AppMotion.slow),
-              curve: AppMotion.curve,
-              builder: (BuildContext context, double scale, Widget? child) {
-                return Transform.scale(scale: scale, child: child);
-              },
-              child: Container(
-                padding: const EdgeInsets.all(S.xs + S.xxs),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: R.all(R.md),
-                  border: Border.all(color: AppColors.popPink, width: 2),
-                  boxShadow: AppShadows.lifted,
-                ),
-                child: ClipRRect(
-                  borderRadius: R.all(R.sm),
-                  child: Image.memory(bytes, fit: BoxFit.contain),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -494,6 +456,7 @@ class _ActionBar extends StatelessWidget {
     required this.onSave,
     required this.onShare,
     required this.onMakeAnother,
+    this.savedToGallery = false,
     this.albumAvailable = false,
     this.isSavingToAlbum = false,
     this.savedToAlbum = false,
@@ -504,6 +467,11 @@ class _ActionBar extends StatelessWidget {
 
   final bool isSaving;
   final bool isSharing;
+
+  /// The gallery write already succeeded for this exact render, so the
+  /// primary action shows a persistent "Saved" state and does not offer a
+  /// second click that would write a duplicate.
+  final bool savedToGallery;
 
   /// Platform-specific primary action label ("Save to Photos" / "Download PNG").
   final String saveLabel;
@@ -539,23 +507,34 @@ class _ActionBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           PressableScale(
-            enabled: !isSaving && !isSharing,
+            enabled: !isSaving && !isSharing && !savedToGallery,
             child: FilledButton.icon(
-              onPressed: isSaving ? null : onSave,
-              icon: isSaving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppColors.onAccent,
-                      ),
-                    )
-                  : const Icon(Icons.download_rounded, size: 20),
-              label: Text(saveLabel),
+              onPressed: savedToGallery ? null : (isSaving ? null : onSave),
+              icon: savedToGallery
+                  ? const Icon(Icons.check_circle_rounded, size: 20)
+                  : isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.onAccent,
+                          ),
+                        )
+                      : const Icon(Icons.download_rounded, size: 20),
+              label: Text(savedToGallery ? 'Saved' : saveLabel),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
                 backgroundColor: AppColors.hotPink,
+                disabledBackgroundColor: savedToGallery
+                    // Keep the filled, clearly-successful look after the save
+                    // instead of sinking the button to disabled grey: "saved"
+                    // is a result, not a dead control.
+                    ? AppColors.success
+                    : null,
+                disabledForegroundColor: savedToGallery
+                    ? AppColors.onAccent
+                    : null,
                 shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
               ),
             ),
@@ -583,7 +562,13 @@ class _ActionBar extends StatelessWidget {
               label: const Text('Share'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
+                // The global theme paints outlined buttons on the light
+                // paper surface; on this dark screen an inherited white fill
+                // would swallow the white label, so both surfaces are set
+                // explicitly: a lifted dark pill with a light label.
+                backgroundColor: AppColors.darkElevated,
                 foregroundColor: AppColors.onDark,
+                disabledForegroundColor: AppColors.darkMuted,
                 side: const BorderSide(color: AppColors.darkLine, width: 2),
                 shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
               ),
@@ -620,7 +605,9 @@ class _ActionBar extends StatelessWidget {
                 ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
+                  backgroundColor: AppColors.darkElevated,
                   foregroundColor: AppColors.onDark,
+                  disabledForegroundColor: AppColors.darkMuted,
                   side: const BorderSide(color: AppColors.darkLine),
                   shape: RoundedRectangleBorder(borderRadius: R.pillRadius),
                 ),
@@ -653,30 +640,3 @@ class _ActionBar extends StatelessWidget {
   }
 }
 
-class _CircleButton extends StatelessWidget {
-  const _CircleButton({required this.icon, this.onPressed});
-
-  final IconData icon;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool enabled = onPressed != null;
-    return Material(
-      color: enabled ? AppColors.darkElevated : AppColors.darkSurface,
-      shape: CircleBorder(side: BorderSide(color: AppColors.darkLine)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(
-            icon,
-            size: 22,
-            color: enabled ? AppColors.onDark : AppColors.darkMuted,
-          ),
-        ),
-      ),
-    );
-  }
-}

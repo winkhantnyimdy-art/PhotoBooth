@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/art/checkerboard.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_radius.dart';
@@ -11,6 +10,7 @@ import '../album/album_scope.dart';
 import '../album/album_screen.dart';
 import '../album/album_service_contract.dart';
 import '../album/album_thumbnail.dart';
+import '../../shared/minimal_dark.dart';
 import '../camera/camera_preferences.dart';
 import '../camera/preferences_service.dart';
 
@@ -156,7 +156,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-            const CheckerboardPattern(height: 20),
           ],
         ),
       ),
@@ -168,19 +167,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.sm),
       child: Row(
         children: <Widget>[
-          _CircleButton(
+          MinimalIconButton(
             icon: Icons.arrow_back_rounded,
+            tooltip: 'Back',
             onPressed: () => Navigator.of(context).maybePop(),
           ),
           Expanded(
             child: Center(
-              child: Text(
-                'Settings',
-                style: AppText.title.copyWith(color: AppColors.onDark),
+              child: Semantics(
+                header: true,
+                child: Text(
+                  'Settings',
+                  style: AppText.title.copyWith(color: AppColors.onDark),
+                ),
               ),
             ),
           ),
-          const SizedBox(width: 44),
+          const SizedBox(width: S.touchTarget),
         ],
       ),
     );
@@ -595,34 +598,6 @@ class _Note extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _CircleButton extends StatelessWidget {
-  const _CircleButton({required this.icon, this.onPressed});
-
-  final IconData icon;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool enabled = onPressed != null;
-    return Material(
-      color: AppColors.darkElevated,
-      shape: const CircleBorder(side: BorderSide(color: AppColors.darkLine)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(
-            icon,
-            size: 22,
-            color: enabled ? AppColors.onDark : AppColors.darkMuted,
-          ),
-        ),
       ),
     );
   }
