@@ -23,17 +23,24 @@ Future<AlbumSession> buildAlbumSession({
   required DecorationState decorationState,
   String? existingId,
   String? name,
+  Uint8List? renderedStripBytes,
 }) async {
   final List<Uint8List> bytes = <Uint8List>[];
   for (final XFile photo in photos) {
     bytes.add(await readPhotoBytes(photo));
   }
 
-  // The thumbnail is generated from the first shot; the grid only needs one
-  // representative frame and generating per-shot tiles would multiply the cost
-  // of every save for no visible benefit.
-  final Uint8List? thumbnail =
-      bytes.isEmpty ? null : await generateAlbumThumbnail(bytes.first);
+  // The album grid shows the *complete* photostrip, so prefer a thumbnail
+  // rendered from the finished strip when one is available. Falling back to
+  // the first shot keeps the album working for callers that only have the
+  // source photos (and never breaks older save paths).
+  Uint8List? thumbnail;
+  if (renderedStripBytes != null && renderedStripBytes.isNotEmpty) {
+    thumbnail = await generateAlbumThumbnail(renderedStripBytes);
+  }
+  thumbnail ??= bytes.isEmpty
+      ? null
+      : await generateAlbumThumbnail(bytes.first);
 
   return AlbumSession(
     id: existingId ?? newAlbumSessionId(),
@@ -55,7 +62,8 @@ Future<AlbumSession> buildAlbumSession({
 String newAlbumSessionId() {
   final DateTime now = DateTime.now();
   String two(int v) => v.toString().padLeft(2, '0');
-  final String stamp = '${now.year.toString().padLeft(4, '0')}'
+  final String stamp =
+      '${now.year.toString().padLeft(4, '0')}'
       '${two(now.month)}${two(now.day)}-${two(now.hour)}${two(now.minute)}'
       '${two(now.second)}';
   _sequence += 1;

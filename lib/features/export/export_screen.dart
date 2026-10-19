@@ -213,6 +213,7 @@ class _ExportScreenState extends State<ExportScreen> {
         photos: widget.photos,
         decorationState: widget.decorationState,
         existingId: widget.albumSessionId,
+        renderedStripBytes: _renderedImage,
       );
       final AlbumResult<void> result = await album.saveSession(session);
       if (!mounted) return;
@@ -250,90 +251,93 @@ class _ExportScreenState extends State<ExportScreen> {
         child: _errorMessage != null
             ? _buildError()
             : _isPreparing
-                ? _buildPreparing()
-                : _buildReady(),
+            ? _buildPreparing()
+            : _buildReady(),
       ),
     );
   }
 
   Widget _buildPreparing() => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(S.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const SizedBox(
-                width: 44,
-                height: 44,
-                child: CircularProgressIndicator(strokeWidth: 3),
-              ),
-              const SizedBox(height: S.md),
-              Text('Preparing your strip...', style: AppText.label),
-              const SizedBox(height: S.xs),
-              Text(
-                'Rendering at full resolution.',
-                textAlign: TextAlign.center,
-                style: AppText.caption,
-              ),
-            ],
+    child: Padding(
+      padding: const EdgeInsets.all(S.lg),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const SizedBox(
+            width: 44,
+            height: 44,
+            child: CircularProgressIndicator(strokeWidth: 3),
           ),
-        ),
-      );
+          const SizedBox(height: S.md),
+          Text(
+            'Preparing your strip...',
+            style: AppText.label.copyWith(color: AppColors.onDark),
+          ),
+          const SizedBox(height: S.xs),
+          Text(
+            'Rendering at full resolution.',
+            textAlign: TextAlign.center,
+            style: AppText.caption,
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _buildError() => Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(S.lg),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(S.lg),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: R.all(R.lg),
-              border: Border.all(color: AppColors.line),
-              boxShadow: AppShadows.card,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Container(
-                  width: 64,
-                  height: 64,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceTint,
-                    borderRadius: R.all(R.xl),
-                  ),
-                  child: const Icon(
-                    Icons.error_outline_rounded,
-                    size: 32,
-                    color: AppColors.danger,
-                  ),
-                ),
-                const SizedBox(height: S.md),
-                Text(
-                  _errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: AppText.heading.copyWith(color: AppColors.onDark),
-                ),
-                const SizedBox(height: S.xs),
-                Text(
-                  'Nothing was saved. Try rendering the strip again.',
-                  textAlign: TextAlign.center,
-                  style: AppText.caption.copyWith(color: AppColors.darkMuted),
-                ),
-                const SizedBox(height: S.lg),
-                PressableScale(
-                  child: FilledButton.icon(
-                    onPressed: _prepareExport,
-                    icon: const Icon(Icons.refresh_rounded, size: 20),
-                    label: const Text('Retry'),
-                  ),
-                ),
-              ],
-            ),
-          ),
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(S.lg),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(S.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: R.all(R.lg),
+          border: Border.all(color: AppColors.line),
+          boxShadow: AppShadows.card,
         ),
-      );
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 64,
+              height: 64,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceTint,
+                borderRadius: R.all(R.xl),
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                size: 32,
+                color: AppColors.danger,
+              ),
+            ),
+            const SizedBox(height: S.md),
+            Text(
+              _errorMessage!,
+              textAlign: TextAlign.center,
+              style: AppText.heading.copyWith(color: AppColors.onDark),
+            ),
+            const SizedBox(height: S.xs),
+            Text(
+              'Nothing was saved. Try rendering the strip again.',
+              textAlign: TextAlign.center,
+              style: AppText.caption.copyWith(color: AppColors.darkMuted),
+            ),
+            const SizedBox(height: S.lg),
+            PressableScale(
+              child: FilledButton.icon(
+                onPressed: _prepareExport,
+                icon: const Icon(Icons.refresh_rounded, size: 20),
+                label: const Text('Retry'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 
   Widget _buildReady() {
     final double aspect = PhotoStripGeometry.aspectRatio(widget.layout);
@@ -347,20 +351,25 @@ class _ExportScreenState extends State<ExportScreen> {
               MinimalIconButton(
                 icon: Icons.close_rounded,
                 tooltip: 'Close and discard',
-                onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                onPressed: () =>
+                    Navigator.of(context).popUntil((route) => route.isFirst),
               ),
               Expanded(
                 child: Center(
                   child: Semantics(
                     header: true,
-                    child: Text('Ready!', style: AppText.title),
+                    child: Text(
+                      'Ready!',
+                      style: AppText.title.copyWith(color: AppColors.onDark),
+                    ),
                   ),
                 ),
               ),
               MinimalIconButton(
                 icon: Icons.home_rounded,
                 tooltip: 'Back to Home',
-                onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                onPressed: () =>
+                    Navigator.of(context).popUntil((route) => route.isFirst),
               ),
             ],
           ),
@@ -384,7 +393,7 @@ class _ExportScreenState extends State<ExportScreen> {
         Text(
           'Save or share it ✨',
           textAlign: TextAlign.center,
-          style: AppText.body,
+          style: AppText.body.copyWith(color: AppColors.darkMuted),
         ),
         _ActionBar(
           isSaving: _isSaving,
@@ -499,9 +508,7 @@ class _ActionBar extends StatelessWidget {
         S.lg,
         S.md + MediaQuery.paddingOf(context).bottom,
       ),
-      decoration: const BoxDecoration(
-        color: AppColors.darkSurface,
-      ),
+      decoration: const BoxDecoration(color: AppColors.darkSurface),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -513,15 +520,15 @@ class _ActionBar extends StatelessWidget {
               icon: savedToGallery
                   ? const Icon(Icons.check_circle_rounded, size: 20)
                   : isSaving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.onAccent,
-                          ),
-                        )
-                      : const Icon(Icons.download_rounded, size: 20),
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.onAccent,
+                      ),
+                    )
+                  : const Icon(Icons.download_rounded, size: 20),
               label: Text(savedToGallery ? 'Saved' : saveLabel),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
@@ -598,10 +605,12 @@ class _ActionBar extends StatelessWidget {
                       ),
                 label: Text(
                   savedToAlbum
-                      ? (isEditingAlbumSession ? 'Album updated' : 'Saved to album')
+                      ? (isEditingAlbumSession
+                            ? 'Album updated'
+                            : 'Saved to album')
                       : (isEditingAlbumSession
-                          ? 'Update album session'
-                          : 'Save to album'),
+                            ? 'Update album session'
+                            : 'Save to album'),
                 ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
@@ -629,9 +638,7 @@ class _ActionBar extends StatelessWidget {
               onPressed: onMakeAnother,
               icon: const Icon(Icons.replay_rounded, size: 20),
               label: const Text('Make Another'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.darkMuted,
-              ),
+              style: TextButton.styleFrom(foregroundColor: AppColors.darkMuted),
             ),
           ),
         ],
@@ -639,4 +646,3 @@ class _ActionBar extends StatelessWidget {
     );
   }
 }
-

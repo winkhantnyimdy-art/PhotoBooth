@@ -62,8 +62,8 @@ class AlbumRecord {
   /// session cannot end up pointing at another session's blobs and a reordered
   /// or hand-edited key list cannot desynchronise photos from their record.
   List<String> resolvePhotoKeys() => <String>[
-        for (int i = 0; i < photoKeys.length; i++) photoKey(i),
-      ];
+    for (int i = 0; i < photoKeys.length; i++) photoKey(i),
+  ];
 
   /// Number of photos this session is expected to have.
   int get photoCount => photoKeys.length;
@@ -91,36 +91,36 @@ class AlbumRecord {
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'schema': schemaVersion,
-        'id': id,
-        'createdAt': createdAt.toIso8601String(),
-        'layout': layoutName,
-        'decoration': decoration,
-        'photoKeys': photoKeys,
-        // Only the thumbnail is base64'd: it is a single small image kept in
-        // the record so the album grid renders without touching photo blobs.
-        'thumbnail': thumbnail == null ? null : base64Encode(thumbnail!),
-        'name': name,
-      };
+    'schema': schemaVersion,
+    'id': id,
+    'createdAt': createdAt.toIso8601String(),
+    'layout': layoutName,
+    'decoration': decoration,
+    'photoKeys': photoKeys,
+    // Only the thumbnail is base64'd: it is a single small image kept in
+    // the record so the album grid renders without touching photo blobs.
+    'thumbnail': thumbnail == null ? null : base64Encode(thumbnail!),
+    'name': name,
+  };
 
   /// Strict decode used when writing.
   factory AlbumRecord.fromJson(Map<String, dynamic> json) => AlbumRecord(
-        schemaVersion: (json['schema'] as num?)?.toInt() ?? 0,
-        id: json['id'] as String,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-        layoutName: json['layout'] as String,
-        decoration: Map<String, dynamic>.from(
-          json['decoration'] as Map<dynamic, dynamic>,
-        ),
-        photoKeys: <String>[
-          for (final Object? k in (json['photoKeys'] as List? ?? const <Object?>[]))
-            k! as String,
-        ],
-        thumbnail: json['thumbnail'] == null
-            ? null
-            : base64Decode(json['thumbnail'] as String),
-        name: json['name'] as String?,
-      );
+    schemaVersion: (json['schema'] as num?)?.toInt() ?? 0,
+    id: json['id'] as String,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    layoutName: json['layout'] as String,
+    decoration: Map<String, dynamic>.from(
+      json['decoration'] as Map<dynamic, dynamic>,
+    ),
+    photoKeys: <String>[
+      for (final Object? k in (json['photoKeys'] as List? ?? const <Object?>[]))
+        k! as String,
+    ],
+    thumbnail: json['thumbnail'] == null
+        ? null
+        : base64Decode(json['thumbnail'] as String),
+    name: json['name'] as String?,
+  );
 
   /// Tolerant decode used when reading rows that may predate a schema change.
   ///
@@ -156,7 +156,11 @@ class AlbumRecord {
   /// Whether a stored decoration map contains the fields [DecorationState]
   /// requires to be reconstructed.
   static bool _hasRequiredDecorationFields(Map<Object?, Object?> decoration) {
-    for (final String field in const <String>['layout', 'background', 'style']) {
+    for (final String field in const <String>[
+      'layout',
+      'background',
+      'style',
+    ]) {
       if (decoration[field] is! String) return false;
     }
     return true;
@@ -164,14 +168,14 @@ class AlbumRecord {
 
   /// Lightweight grid entry derived from a record, without any photo bytes.
   AlbumSummary toSummary({required int missingPhotos}) => AlbumSummary(
-        id: id,
-        createdAt: createdAt,
-        layoutName: layoutName,
-        photoCount: photoKeys.length,
-        thumbnail: thumbnail,
-        name: name,
-        missingPhotos: missingPhotos,
-      );
+    id: id,
+    createdAt: createdAt,
+    layoutName: layoutName,
+    photoCount: photoKeys.length,
+    thumbnail: thumbnail,
+    name: name,
+    missingPhotos: missingPhotos,
+  );
 }
 
 /// A session as shown in the album grid: metadata and a thumbnail, no photos.
@@ -202,7 +206,17 @@ class AlbumSummary {
 
   bool get isDamaged => missingPhotos > 0;
 
-  String get displayName => name ?? 'Session ${AlbumSession.formatDate(createdAt)}';
+  /// Best-effort reconstruction of the stored layout. Unknown names fall back
+  /// to the default 4 CUT layout so the grid can still size the thumbnail.
+  PhotoLayout get layout {
+    for (final PhotoLayout candidate in PhotoLayout.values) {
+      if (candidate.name == layoutName) return candidate;
+    }
+    return PhotoLayout.grid4;
+  }
+
+  String get displayName =>
+      name ?? 'Session ${AlbumSession.formatDate(createdAt)}';
 }
 
 /// Short label for a stored layout name.
@@ -230,8 +244,7 @@ AlbumRecord albumRecordFromSession(
     layoutName: session.layout.name,
     decoration: decorationStateToJson(session.decorationState),
     photoKeys: <String>[
-      for (int i = 0; i < session.photoBytes.length; i++)
-        '${session.id}/$i',
+      for (int i = 0; i < session.photoBytes.length; i++) '${session.id}/$i',
     ],
     thumbnail: thumbnail,
     name: session.name,

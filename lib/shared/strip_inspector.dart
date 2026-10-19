@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import 'minimal_dark.dart';
@@ -118,9 +119,31 @@ class _StripInspectorState extends State<StripInspector> {
                           : null,
                       icon: const Icon(Icons.fit_screen_rounded, size: 18),
                       label: const Text('Fit'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.onDark,
-                        backgroundColor: AppColors.darkSurface,
+                      style: ButtonStyle(
+                        foregroundColor: WidgetStateProperty.resolveWith<Color>(
+                          (Set<WidgetState> states) =>
+                              states.contains(WidgetState.disabled)
+                              ? AppColors.darkMuted
+                              : AppColors.onDark,
+                        ),
+                        backgroundColor: WidgetStateProperty.resolveWith<Color>(
+                          (Set<WidgetState> states) =>
+                              states.contains(WidgetState.disabled)
+                              ? Colors.transparent
+                              : AppColors.darkElevated,
+                        ),
+                        side: const WidgetStatePropertyAll<BorderSide>(
+                          BorderSide(color: AppColors.darkLine),
+                        ),
+                        shape: WidgetStatePropertyAll<OutlinedBorder>(
+                          RoundedRectangleBorder(borderRadius: R.pillRadius),
+                        ),
+                        padding: const WidgetStatePropertyAll<EdgeInsets>(
+                          EdgeInsets.symmetric(
+                            horizontal: S.md,
+                            vertical: S.xs,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -148,7 +171,7 @@ class _StripInspectorState extends State<StripInspector> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(bottom: S.sm),
+              padding: const EdgeInsets.fromLTRB(S.md, S.xs, S.md, S.lg),
               child: Text(
                 'Pinch to zoom, drag to pan',
                 style: AppText.caption.copyWith(color: AppColors.darkMuted),
