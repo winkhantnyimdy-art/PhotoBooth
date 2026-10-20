@@ -44,7 +44,8 @@ void scheduleEditorZoomForCurrentEditor(double? factor) {
   if (root != null) visit(root);
   final StatefulElement? editorElement = editor;
   if (editorElement == null) return;
-  final _DecorateScreenState state = editorElement.state as _DecorateScreenState;
+  final _DecorateScreenState state =
+      editorElement.state as _DecorateScreenState;
 
   // Anchor the scale on the viewport centre, so the strip grows in place the
   // way a pinch at the middle of the photo does. An uncompensated diagonal
@@ -454,11 +455,18 @@ class _DecorateScreenState extends State<DecorateScreen> {
     // photostrip - the reason the screen exists - stays dominant.
     //
     // 0.36 rather than 0.32: the Filters tab is header + strength slider +
-    // a 104 dp shelf + a hint. At 0.32 the viewport ended inside the slider
-    // and the control painted nothing at its resting scroll position, which
-    // made the primary control of the tab look absent (visible in the
-    // Checkpoint 2 captures as a thumb sliver under the finish button).
-    final double trayHeight = (screen * 0.36).clamp(212.0, 340.0).toDouble();
+    // a 96 dp shelf. At 0.32 the viewport ended inside the slider and the
+    // control painted nothing at its resting scroll position, which made the
+    // primary control of the tab look absent (visible in the Checkpoint 2
+    // captures as a thumb sliver under the finish button).
+    //
+    // Content floor, not a design enlargement: below it the filter-shelf labels
+    // land under the action bar. On short viewports the 0.36 share cannot reach
+    // the content floor, so the tray grows to keep every effect label visible.
+    // 298 is the measured floor: 4 top inset + 24 header + two 2 dp gaps + the
+    // 56 dp strength block + 94 dp shelf, plus tab bar and action bar. It stays
+    // under half of the 600 dp regression viewport.
+    final double trayHeight = (screen * 0.36).clamp(298.0, 340.0).toDouble();
 
     return Container(
       decoration: const BoxDecoration(
@@ -473,6 +481,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
             _buildTabBar(),
             Expanded(
               child: SingleChildScrollView(
+                key: const ValueKey<String>('decorate-tool-scroll'),
                 padding: const EdgeInsets.fromLTRB(S.md, S.xs, S.md, S.sm),
                 child: _buildTabContent(),
               ),
@@ -581,19 +590,55 @@ class _DecorateScreenState extends State<DecorateScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _SectionHeader(
-          title: 'Filters',
-          // Original does not grade the photo, so no strength figure applies;
-          // "100%" there implied an effect the user did not pick.
-          trailing: original ? 'No effect' : '${(_state.filterIntensity * 100).round()}%',
+        SizedBox(
+          // Compact section header keeps the filter shelf inside the tool
+          // viewport on short Android viewports.
+          height: 24,
+          child: _SectionHeader(
+            title: 'Filters',
+            // Reset lives in the header instead of consuming a full row above
+            // the shelf. The old row pushed the shelf's label baseline under
+            // the tray viewport, which is the defect in
+            // checkpoint-5-acceptance/22-filter-tray-clipping.png.
+            action: original
+                ? null
+                : Semantics(
+                    button: true,
+                    label: 'Reset to Original',
+                    onTap: _resetEffectToOriginal,
+                    child: ExcludeSemantics(
+                      child: TextButton(
+                        key: const ValueKey<String>('reset-effect'),
+                        onPressed: _resetEffectToOriginal,
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(0, 24),
+                          // Four dp per side: the full label and the 100%
+                          // readout fit a 320 dp header without an overflow.
+                          padding: const EdgeInsets.symmetric(horizontal: S.xs),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                          foregroundColor: AppColors.darkMuted,
+                          textStyle: AppText.caption.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        child: const Text('Reset to Original'),
+                      ),
+                    ),
+                  ),
+            // Original does not grade the photo, so no strength figure
+            // applies; "100%" there implied an effect the user did not pick.
+            trailing: original
+                ? 'No effect'
+                : '${(_state.filterIntensity * 100).round()}%',
+          ),
         ),
-        const SizedBox(height: S.sm),
+        const SizedBox(height: S.xxs),
         // The strength control sits directly under the section header, not
-        // under the shelf. The tray viewport is ~150 dp; with the slider below
-        // the 104 dp shelf it landed exactly on the viewport cut and painted
-        // nothing - the Checkpoint 2 captures show the same clipped control -
-        // while the tap target still worked, so the control looked absent.
-        // Above the shelf it is visible and reachable without scrolling.
+        // under the shelf. With the slider below the shelf it landed on the
+        // viewport cut and painted nothing while the tap target still worked,
+        // so the control looked absent. Above the shelf it is visible and
+        // reachable without scrolling.
         _DarkSlider(
           key: const ValueKey<String>('filter-intensity'),
           label: 'Strength',
@@ -601,22 +646,16 @@ class _DecorateScreenState extends State<DecorateScreen> {
           value: _state.filterIntensity,
           min: 0,
           max: 1,
-          display: original ? 'No effect' : '${(_state.filterIntensity * 100).round()}%',
+          display: original
+              ? 'No effect'
+              : '${(_state.filterIntensity * 100).round()}%',
           // Disabled on Original, because there is nothing there to grade.
           // Keeping the control visible but inert is the clearest signal that
           // picking an effect is what makes strength meaningful.
           onChanged: original ? null : _changeEffectIntensity,
         ),
-        const SizedBox(height: S.sm),
-        if (_state.filter != PhotoEffect.original)
-           Align(
-             alignment: Alignment.centerRight,
-             child: TextButton(
-               onPressed: _resetEffectToOriginal,
-               child: const Text('Reset to Original'),
-             ),
-           ),
-         _buildFilterShelf(),
+        const SizedBox(height: S.xxs),
+        _buildFilterShelf(),
         // One hint line, not two. The panel is a fixed height and the
         // strength slider is a primary control: a second explanatory line
         // pushed it below the fold, so the disclosure is folded into the
@@ -647,7 +686,11 @@ class _DecorateScreenState extends State<DecorateScreen> {
   /// and the chips underneath remain the targets.
   Widget _buildFilterShelf() {
     return SizedBox(
-      height: 104,
+      key: const ValueKey<String>('filter-shelf'),
+      // 94 dp still holds a 72 dp chip, its 4 dp gap and the 10 pt label,
+      // including at 1.3x text scale. The old 104 dp box left unused space and
+      // pushed the label row beneath the action bar on shorter viewports.
+      height: 94,
       child: Stack(
         children: <Widget>[
           Positioned.fill(
@@ -746,6 +789,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
           children: <Widget>[
             for (final FrameStyle style in FrameStyle.values)
               _ChoicePill(
+                key: ValueKey<String>('frame-border-${style.name}'),
                 label: style.label,
                 semanticLabel: '${style.label} border',
                 selected: _state.frameStyle == style,
@@ -764,6 +808,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
           children: <Widget>[
             for (final FrameTheme theme in FrameTheme.values)
               _ChoicePill(
+                key: ValueKey<String>('frame-theme-${theme.name}'),
                 label: theme.label,
                 semanticLabel: '${theme.label} frame theme',
                 selected: _state.frameTheme == theme,
@@ -780,6 +825,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
           children: <Widget>[
             for (final DecorativeStyle style in DecorativeStyle.values)
               _ChoicePill(
+                key: ValueKey<String>('frame-pattern-${style.name}'),
                 label: style.label,
                 semanticLabel: '${style.label} pattern',
                 selected: _state.style == style,
@@ -1069,6 +1115,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
 
   Widget _buildDoneButton(BuildContext context) {
     return Padding(
+      key: const ValueKey<String>('decorate-done-bar'),
       padding: const EdgeInsets.fromLTRB(S.md, S.xs, S.md, S.sm),
       child: PressableScale(
         child: FilledButton.icon(
@@ -1139,7 +1186,8 @@ class _DecorateScreenState extends State<DecorateScreen> {
     });
   }
 
-  void _resetDecoration() {    _undoRedo.record(_state);
+  void _resetDecoration() {
+    _undoRedo.record(_state);
     setState(() {
       _state = DecorationState(
         layout: _layout,
@@ -1753,11 +1801,7 @@ class _FilteredImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EffectImage(
-      photo: photo,
-      recipe: recipe,
-      decodeWidth: decodeWidth,
-    );
+    return EffectImage(photo: photo, recipe: recipe, decodeWidth: decodeWidth);
   }
 }
 
@@ -2053,10 +2097,16 @@ class _FooterPainter extends CustomPainter {
 // -----------------------------------------------------------------------------
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.trailing});
+  const _SectionHeader({required this.title, this.trailing, this.action});
 
   final String title;
   final String? trailing;
+
+  /// Optional compact action rendered before [trailing].
+  ///
+  /// Used by Filters for Reset to Original, so the reset does not take a
+  /// whole row away from the effect shelf.
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -2068,10 +2118,14 @@ class _SectionHeader extends StatelessWidget {
             style: AppText.overline.copyWith(color: AppColors.darkMuted),
           ),
         ),
+        ?action,
         if (trailing != null)
-          Text(
-            trailing!,
-            style: AppText.label.copyWith(color: AppColors.onDark),
+          Padding(
+            padding: EdgeInsets.only(left: action == null ? 0 : S.xs),
+            child: Text(
+              trailing!,
+              style: AppText.label.copyWith(color: AppColors.onDark),
+            ),
           ),
       ],
     );
@@ -2157,6 +2211,8 @@ class _DarkSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool enabled = onChanged != null;
+    final Color labelColor = enabled ? AppColors.onDark : AppColors.darkMuted;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -2165,7 +2221,7 @@ class _DarkSlider extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: AppText.label.copyWith(color: AppColors.onDark),
+                style: AppText.label.copyWith(color: labelColor),
               ),
             ),
             Text(
@@ -2177,23 +2233,38 @@ class _DarkSlider extends StatelessWidget {
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
             trackHeight: 4,
-            activeTrackColor: AppColors.onDark,
+            activeTrackColor: enabled
+                ? AppColors.onDark
+                : AppColors.darkChipDisabledInk,
             inactiveTrackColor: AppColors.darkLine,
-            thumbColor: AppColors.onDark,
-            overlayColor: AppColors.onDark.withValues(alpha: 0.18),
+            thumbColor: enabled
+                ? AppColors.onDark
+                : AppColors.darkChipDisabledInk,
+            overlayColor: AppColors.onDark.withValues(
+              alpha: enabled ? 0.18 : 0.06,
+            ),
+            disabledActiveTrackColor: AppColors.darkChipDisabledInk,
+            disabledInactiveTrackColor: AppColors.darkLine,
+            disabledThumbColor: AppColors.darkChipDisabledInk,
           ),
           child: Semantics(
             label: semanticLabel ?? label,
             // Announce the live value so the adjustment is legible without
             // sight, and mark the control's state when it cannot be changed.
             value: display,
-            enabled: onChanged != null,
+            enabled: enabled,
             child: ExcludeSemantics(
-              child: Slider(
-                value: value.clamp(min, max),
-                min: min,
-                max: max,
-                onChanged: onChanged,
+              // 38 dp keeps the track and thumb fully painted while removing
+              // the Material slider's spare vertical padding. That is what lets
+              // the Filters tab's shelf clear the action bar on short phones.
+              child: SizedBox(
+                height: 38,
+                child: Slider(
+                  value: value.clamp(min, max),
+                  min: min,
+                  max: max,
+                  onChanged: onChanged,
+                ),
               ),
             ),
           ),
@@ -2280,6 +2351,7 @@ class _FilterThumb extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             AnimatedContainer(
+              key: ValueKey<String>('filter-thumb-${effect.name}'),
               duration: AppMotion.of(context, AppMotion.fast),
               width: _chip,
               height: _chip,
@@ -2291,16 +2363,14 @@ class _FilterThumb extends StatelessWidget {
                   width: selected ? 2.5 : 1,
                 ),
               ),
-              child: ClipRRect(
-                borderRadius: R.all(R.xs + 2),
-                child: graded,
-              ),
+              child: ClipRRect(borderRadius: R.all(R.xs + 2), child: graded),
             ),
             const SizedBox(height: 4),
             SizedBox(
               width: _chip + 2,
               child: Text(
                 effect.label,
+                key: ValueKey<String>('filter-label-${effect.name}'),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -2320,6 +2390,7 @@ class _FilterThumb extends StatelessWidget {
 
 class _ChoicePill extends StatelessWidget {
   const _ChoicePill({
+    super.key,
     required this.label,
     required this.semanticLabel,
     required this.selected,
@@ -2329,34 +2400,52 @@ class _ChoicePill extends StatelessWidget {
   final String label;
   final String semanticLabel;
   final bool selected;
-  final VoidCallback onTap;
+
+  /// Null renders the pill in its disabled state.
+  ///
+  /// No current frame or pattern option is unavailable, but keeping the state
+  /// in the shared selector means future restrictions inherit the same
+  /// contrast rules instead of growing a one-off grey pill.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final bool enabled = onTap != null;
+    final Color surface;
+    final Color ink;
+    final Color border;
+    if (!enabled) {
+      surface = AppColors.darkChipDisabledSurface;
+      ink = AppColors.darkChipDisabledInk;
+      border = AppColors.darkLine;
+    } else if (selected) {
+      surface = AppColors.darkChipSelectedSurface;
+      ink = AppColors.darkChipSelectedInk;
+      border = AppColors.darkChipSelectedSurface;
+    } else {
+      surface = AppColors.darkSurface;
+      ink = AppColors.onDark;
+      border = AppColors.darkLine;
+    }
+
     return Semantics(
       button: true,
+      enabled: enabled,
       selected: selected,
       label: semanticLabel,
       excludeSemantics: true,
       child: GestureDetector(
         onTap: onTap,
+        behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
           duration: AppMotion.of(context, AppMotion.fast),
           padding: const EdgeInsets.symmetric(horizontal: S.md, vertical: S.sm),
           decoration: BoxDecoration(
-            color: selected ? AppColors.onDark : AppColors.darkSurface,
+            color: surface,
             borderRadius: R.pillRadius,
-            border: Border.all(
-              color: selected ? AppColors.onDark : AppColors.darkLine,
-              width: 1.5,
-            ),
+            border: Border.all(color: border, width: 1.5),
           ),
-          child: Text(
-            label,
-            style: AppText.buttonSmall.copyWith(
-              color: selected ? AppColors.onAccent : AppColors.onDark,
-            ),
-          ),
+          child: Text(label, style: AppText.buttonSmall.copyWith(color: ink)),
         ),
       ),
     );

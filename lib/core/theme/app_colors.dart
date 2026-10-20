@@ -71,4 +71,19 @@ abstract final class AppColors {
 
   /// Subtle silver accent for selection and affordances.
   static const Color silver = Color(0xFFC7C7CC);
+
+  /// Selected pills on [darkSurface].
+  ///
+  /// A light fill keeps the chosen option obvious at a glance, while the dark
+  /// ink keeps the label readable. The old pair used white for both, which is
+  /// why selected Frame Theme and Pattern chips rendered as blank capsules.
+  static const Color darkChipSelectedSurface = Color(0xFFF2F2F4);
+  static const Color darkChipSelectedInk = Color(0xFF16161A);
+
+  /// Disabled pills on [darkSurface].
+  ///
+  /// Kept lighter than an unselected chip and paired with muted ink, so an
+  /// unavailable option cannot be mistaken for one that is merely unselected.
+  static const Color darkChipDisabledSurface = Color(0xFF26262C);
+  static const Color darkChipDisabledInk = Color(0xFFA6A6AD);
 }
