@@ -297,11 +297,16 @@ class _DecorateScreenState extends State<DecorateScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Text(
-                  widget.albumSessionId == null ? 'Decorate' : 'Edit Session',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.heading.copyWith(color: AppColors.onDark),
+                // "Edit Session" cannot ellipsize: 320 dp viewports share the
+                // top bar with four circle actions, so the caption scales down
+                // instead (same rule as the tool-tab captions in _buildTabBar).
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    widget.albumSessionId == null ? 'Decorate' : 'Edit Session',
+                    maxLines: 1,
+                    style: AppText.heading.copyWith(color: AppColors.onDark),
+                  ),
                 ),
                 // Layout can be changed without losing any captured photo:
                 // only options with a cell for every photo are offered.
@@ -1055,13 +1060,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
           children: <Widget>[
             const Expanded(child: _SectionHeader(title: 'Adjust')),
             TextButton(
-              onPressed: a.isNeutral
-                  ? null
-                  : () => setState(() {
-                      _state = _state.copyWith(
-                        adjustments: const PhotoAdjustments(),
-                      );
-                    }),
+              onPressed: a.isNeutral ? null : _resetAdjustments,
               child: const Text('Reset'),
             ),
           ],
@@ -1074,6 +1073,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
           max: 1,
           display: _signed(a.brightness),
           onChanged: (double v) => _updateAdjust(a.copyWith(brightness: v)),
+          onChangeEnd: (_) => _commitAdjustSnapshot(),
         ),
         _DarkSlider(
           label: 'Contrast',
@@ -1082,6 +1082,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
           max: 1,
           display: _signed(a.contrast),
           onChanged: (double v) => _updateAdjust(a.copyWith(contrast: v)),
+          onChangeEnd: (_) => _commitAdjustSnapshot(),
         ),
         _DarkSlider(
           label: 'Saturation',
@@ -1090,6 +1091,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
           max: 1,
           display: _signed(a.saturation),
           onChanged: (double v) => _updateAdjust(a.copyWith(saturation: v)),
+          onChangeEnd: (_) => _commitAdjustSnapshot(),
         ),
         _DarkSlider(
           label: 'Warmth',
@@ -1098,6 +1100,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
           max: 1,
           display: _signed(a.warmth),
           onChanged: (double v) => _updateAdjust(a.copyWith(warmth: v)),
+          onChangeEnd: (_) => _commitAdjustSnapshot(),
         ),
         const _Hint('Adjustments stack on top of the selected filter.'),
       ],
@@ -1110,8 +1113,43 @@ class _DecorateScreenState extends State<DecorateScreen> {
   }
 
   void _updateAdjust(PhotoAdjustments adjustments) {
+    // Hold the pre-edit state so the whole slider gesture can be recorded as
+    // one undo entry when it ends (see [_commitAdjustSnapshot]).
+    _adjustUndoBase ??= _state;
     setState(() {
       _state = _state.copyWith(adjustments: adjustments);
+    });
+  }
+
+  /// Pre-edit state captured on the first onChanged tick of a slider gesture,
+  /// committed to the undo stack when the gesture ends.
+  DecorationState? _adjustUndoBase;
+
+  /// One undo entry per slider gesture: brightness drags behave like every
+  /// other edit on this screen instead of spawning an entry per onChanged
+  /// tick, and without flooding the bounded history stack.
+  void _commitAdjustSnapshot() {
+    final DecorationState? base = _adjustUndoBase;
+    _adjustUndoBase = null;
+    if (base == null) return;
+    if (_sameAdjustments(base.adjustments, _state.adjustments)) return;
+    _undoRedo.record(base);
+  }
+
+  static bool _sameAdjustments(PhotoAdjustments a, PhotoAdjustments b) {
+    return a.brightness == b.brightness &&
+        a.contrast == b.contrast &&
+        a.saturation == b.saturation &&
+        a.warmth == b.warmth;
+  }
+
+  void _resetAdjustments() {
+    if (_state.adjustments.isNeutral) return;
+    final DecorationState? pending = _adjustUndoBase;
+    _adjustUndoBase = null;
+    _undoRedo.record(pending ?? _state);
+    setState(() {
+      _state = _state.copyWith(adjustments: const PhotoAdjustments());
     });
   }
 
@@ -2199,6 +2237,7 @@ class _DarkSlider extends StatelessWidget {
     required this.max,
     required this.display,
     required this.onChanged,
+    this.onChangeEnd,
     this.semanticLabel,
   });
 
@@ -2208,6 +2247,12 @@ class _DarkSlider extends StatelessWidget {
   final double max;
   final String display;
   final ValueChanged<double>? onChanged;
+
+  /// Fired when the user lifts off the track (drag end or tap release).
+  ///
+  /// The Adjust tab uses this to fold a whole slider gesture into a single
+  /// undo entry instead of one entry per onChanged tick.
+  final ValueChanged<double>? onChangeEnd;
 
   /// Overrides the visible [label] for assistive technology.
   ///
@@ -2270,6 +2315,7 @@ class _DarkSlider extends StatelessWidget {
                   min: min,
                   max: max,
                   onChanged: onChanged,
+                  onChangeEnd: onChangeEnd,
                 ),
               ),
             ),
