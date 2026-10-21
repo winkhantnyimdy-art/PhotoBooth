@@ -1,0 +1,33 @@
+﻿Checkpoint 5 acceptance - UI hierarchy assertions (uiautomator dump)
+
+== 07 reset -> Original ==
+selected: Original effect
+reset affordance: absent
+no-effect label: present
+
+== 08 undo -> Dreamy ==
+selected: Dreamy effect
+reset affordance: present
+no-effect label: absent
+
+== 09 redo -> Original ==
+selected: Original effect
+reset affordance: absent
+no-effect label: present
+
+== 11 frame -> Minimal White ==
+selected: Minimal White frame theme
+reset affordance: absent
+no-effect label: absent
+
+== 12 frame -> Dark Film ==
+selected: Dark Film frame theme
+reset affordance: absent
+no-effect label: absent
+
+== 13 frame -> Vintage Film ==
+selected: Vintage Film frame theme
+reset affordance: absent
+no-effect label: absent
+
+Exported PNG: 16-exported-strip.png, 1200 x 6459, RGBA

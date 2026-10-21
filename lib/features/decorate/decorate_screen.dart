@@ -494,6 +494,13 @@ class _DecorateScreenState extends State<DecorateScreen> {
   }
 
   Widget _buildTabBar() {
+    // At 320 dp the five equal tabs leave only ~44 dp for a caption after the
+    // icon. Shrink the icon and caption there so "Stickers" and "Frames" stay
+    // readable instead of turning into ellipses.
+    final bool compact = MediaQuery.sizeOf(context).width < 360;
+    final double iconSize = compact ? 15 : 17;
+    final double labelSize = compact ? 10.5 : 11.5;
+    final double labelGap = compact ? 2 : 4;
     return Container(
       padding: const EdgeInsets.fromLTRB(S.sm, S.sm, S.sm, 0),
       decoration: const BoxDecoration(
@@ -533,23 +540,25 @@ class _DecorateScreenState extends State<DecorateScreen> {
                       children: <Widget>[
                         Icon(
                           _tabIcons[i],
-                          size: 17,
+                          size: iconSize,
                           color: _tab == i
                               ? AppColors.onDark
                               : AppColors.darkMuted,
                         ),
-                        const SizedBox(width: 4),
+                        SizedBox(width: labelGap),
                         Flexible(
-                          child: Text(
-                            _tabLabels[i],
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppText.caption.copyWith(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: _tab == i
-                                  ? AppColors.onDark
-                                  : AppColors.darkMuted,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _tabLabels[i],
+                              maxLines: 1,
+                              style: AppText.caption.copyWith(
+                                fontSize: labelSize,
+                                fontWeight: FontWeight.w700,
+                                color: _tab == i
+                                    ? AppColors.onDark
+                                    : AppColors.darkMuted,
+                              ),
                             ),
                           ),
                         ),
@@ -661,15 +670,12 @@ class _DecorateScreenState extends State<DecorateScreen> {
         // pushed it below the fold, so the disclosure is folded into the
         // same row rather than given a line of its own.
         if (_state.filter == PhotoEffect.original)
-          const _Hint(
-            'Original leaves the photo untouched. Digital simulation, '
-            'not scanned film.',
-          )
+          const _Hint('Original - simulated, not scanned film.')
         else
           _Hint(
-            '${_state.filter.label} at '
-            '${(_state.filterIntensity * 100).round()}% - hold a thumbnail to '
-            'compare. Digital simulation, not scanned film.',
+            '${_state.filter.label} '
+            '${(_state.filterIntensity * 100).round()}% - simulated, '
+            'not scanned film.',
           ),
       ],
     );
