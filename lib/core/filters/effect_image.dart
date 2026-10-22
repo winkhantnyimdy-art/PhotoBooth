@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../media/preview_decode.dart';
+import '../theme/app_colors.dart';
 import 'photo_effect.dart';
 import 'photo_filter.dart';
 
@@ -54,6 +55,10 @@ class _EffectImageState extends State<EffectImage> {
   ImageStreamListener? _listener;
   ui.Image? _image;
 
+  /// Set when the decode failed, so the cell can fall back to a defined
+  /// surface instead of staying blank forever (Checkpoint 7, issue F1).
+  bool _failed = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -96,14 +101,22 @@ class _EffectImageState extends State<EffectImage> {
 
     _detach();
     _provider = provider;
+    // A new provider is a fresh attempt: a previous failure must not make
+    // this cell permanently fallback.
+    _failed = false;
     final ImageStream stream = provider.resolve(
       // Configuration is irrelevant for a static file; keeps the code total.
       createLocalImageConfiguration(context),
     );
     _stream = stream;
+    // A failed decode must not surface as an unhandled FlutterError and
+    // leave the cell blank: record the failure so the build falls back.
     _listener = ImageStreamListener((ImageInfo info, _) {
       if (!mounted) return;
       setState(() => _image = info.image);
+    }, onError: (Object error, StackTrace? stackTrace) {
+      if (!mounted) return;
+      setState(() => _failed = true);
     });
     stream.addListener(_listener!);
   }
@@ -112,7 +125,13 @@ class _EffectImageState extends State<EffectImage> {
   Widget build(BuildContext context) {
     final ui.Image? image = _image;
     if (image == null) {
-      return const SizedBox.expand();
+      // While the sized decode is in flight - and, if it cannot complete,
+      // for good - show a defined Minimal Dark surface instead of a blank
+      // cell. Both are pure decoration: taps stay on the chip's own
+      // GestureDetector, and nothing here blocks the rest of the editor.
+      return _failed
+          ? const _EffectImageFallback()
+          : const _EffectImagePlaceholder();
     }
     return RepaintBoundary(
       child: CustomPaint(
@@ -209,6 +228,69 @@ class _EffectPainter extends CustomPainter {
       old.recipe.intensity != recipe.intensity ||
       old.recipe.effect != recipe.effect ||
       old.fit != fit;
+}
+
+/// Subtle while-decoding surface for a preview cell (Checkpoint 7, issue F1).
+///
+/// Deliberately static Minimal Dark chrome: a quiet dot on the shared dark
+/// surface, with a faint film-slat line above it. No animation - a pending
+/// decode must not schedule frames forever, which would both hold the editor
+/// from settling in widget tests and keep 15 chips painting for nothing.
+/// The point is to replace the old silent blank with something that reads as
+/// "coming", using a single paint.
+class _EffectImagePlaceholder extends StatelessWidget {
+  const _EffectImagePlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      key: const ValueKey<String>('effect-image-loading'),
+      decoration: const BoxDecoration(color: AppColors.darkSurface),
+      child: Align(
+        alignment: Alignment.center,
+        child: SizedBox(
+          width: 12,
+          height: 12,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              // 30 % white = AppColors.onDark at 0.30 alpha, as a literal so
+              // the fill colour is const; Border.all is a non-const factory
+              // so the inner box is built fresh - still a single paint, no
+              // scheduled frames.
+              color: const Color(0x4DFFFFFF),
+              border: Border.all(color: AppColors.darkLine),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Defined surface shown when a decode fails, instead of a silent blank cell.
+///
+/// A failed decode is a preview-only problem (the effect itself is applied
+/// live on the big preview and in the export), so the cell degrades to a
+/// muted "no preview" face and the chip keeps working.
+class _EffectImageFallback extends StatelessWidget {
+  const _EffectImageFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      key: ValueKey<String>('effect-image-fallback'),
+      decoration: BoxDecoration(color: AppColors.darkElevated),
+      child: Align(
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          size: 18,
+          color: AppColors.darkMuted,
+        ),
+      ),
+    );
+  }
 }
 
 /// Convenience: the decode width a preview cell of [logicalWidth] should use.
