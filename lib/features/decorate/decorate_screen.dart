@@ -287,9 +287,13 @@ class _DecorateScreenState extends State<DecorateScreen> {
       padding: const EdgeInsets.fromLTRB(S.sm, S.sm, S.sm, S.xs),
       child: Row(
         children: <Widget>[
-          _DarkCircleButton(
-            icon: Icons.arrow_back_rounded,
-            onPressed: () => Navigator.of(context).maybePop(),
+          Semantics(
+            button: true,
+            label: 'Back',
+            child: _DarkCircleButton(
+              icon: Icons.arrow_back_rounded,
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
           ),
           const SizedBox(width: S.xs),
           Expanded(
@@ -318,17 +322,31 @@ class _DecorateScreenState extends State<DecorateScreen> {
               ],
             ),
           ),
-          _DarkCircleButton(
-            icon: Icons.undo_rounded,
-            onPressed: _undoRedo.canUndo ? _undo : null,
+          Semantics(
+            button: true,
+            enabled: _undoRedo.canUndo,
+            label: 'Undo',
+            child: _DarkCircleButton(
+              icon: Icons.undo_rounded,
+              onPressed: _undoRedo.canUndo ? _undo : null,
+            ),
           ),
-          _DarkCircleButton(
-            icon: Icons.redo_rounded,
-            onPressed: _undoRedo.canRedo ? _redo : null,
+          Semantics(
+            button: true,
+            enabled: _undoRedo.canRedo,
+            label: 'Redo',
+            child: _DarkCircleButton(
+              icon: Icons.redo_rounded,
+              onPressed: _undoRedo.canRedo ? _redo : null,
+            ),
           ),
-          _DarkCircleButton(
-            icon: Icons.refresh_rounded,
-            onPressed: _resetDecoration,
+          Semantics(
+            button: true,
+            label: 'Reset to original',
+            child: _DarkCircleButton(
+              icon: Icons.refresh_rounded,
+              onPressed: _resetDecoration,
+            ),
           ),
           Semantics(
             button: true,
@@ -487,7 +505,7 @@ class _DecorateScreenState extends State<DecorateScreen> {
             Expanded(
               child: SingleChildScrollView(
                 key: const ValueKey<String>('decorate-tool-scroll'),
-                padding: const EdgeInsets.fromLTRB(S.md, S.xs, S.md, S.sm),
+                padding: const EdgeInsets.fromLTRB(S.md, S.xs, S.md, S.md),
                 child: _buildTabContent(),
               ),
             ),

@@ -735,7 +735,7 @@ class _SessionCard extends StatelessWidget {
                         children: <Widget>[
                           Text(
                             session.displayName,
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: AppText.label.copyWith(
                               color: AppColors.onDark,
